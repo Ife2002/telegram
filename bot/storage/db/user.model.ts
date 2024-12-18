@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
+import Wallet, { WalletType } from './wallet.model';
 
 // Interface for the settings object
 interface ISettings {
@@ -10,7 +11,7 @@ interface ISettings {
 export interface UserType extends Document {
   discordId: string;
   telegramId: string | null;
-  wallet: Types.ObjectId;
+  wallet:  WalletType;
   rank: number;
   settings: ISettings;
   autoBuy: boolean;

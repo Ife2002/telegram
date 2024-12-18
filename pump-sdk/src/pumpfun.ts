@@ -6,7 +6,7 @@ import {
     PublicKey,
     Transaction,
   } from "@solana/web3.js";
-  import { Program, Provider } from "@coral-xyz/anchor";
+  import { AnchorProvider, Program, Provider } from "@coral-xyz/anchor";
   import { GlobalAccount } from "./globalAccount";
   import {
     CompleteEvent,
@@ -54,7 +54,7 @@ import {
   export class PumpFunSDK {
     public program: Program<PumpFun>;
     public connection: Connection;
-    constructor(provider?: Provider) {
+    constructor(provider?: AnchorProvider) {
       this.program = new Program<PumpFun>(IDL as PumpFun, provider);
       this.connection = this.program.provider.connection;
     }

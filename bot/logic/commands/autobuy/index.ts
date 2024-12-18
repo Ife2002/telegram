@@ -18,36 +18,13 @@ const getProvider = () => {
     return new AnchorProvider(connection, wallet, { commitment: "finalized" });
 };
 
-export function getOrCreateKeypair(dir: string, keyName: string): Keypair {
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const authorityKey = dir + "/" + keyName + ".json";
-    if (fs.existsSync(authorityKey)) {
-      const data: {
-        secretKey: string;
-        publicKey: string;
-      } = JSON.parse(fs.readFileSync(authorityKey, "utf-8"));
-      return Keypair.fromSecretKey(bs58.decode(data.secretKey));
-    } else {
-      const keypair = Keypair.generate();
-      keypair.secretKey;
-      fs.writeFileSync(
-        authorityKey,
-        JSON.stringify({
-          secretKey: bs58.encode(keypair.secretKey),
-          publicKey: keypair.publicKey.toBase58(),
-        })
-      );
-      return keypair;
-    }
-  }
 
 const provider = getProvider();
 const sdk = new PumpFunSDK(provider);
 
 const connection = provider.connection;
 
-const testAccount = getOrCreateKeypair(KEYS_FOLDER, "test-account");
-const mint = getOrCreateKeypair(KEYS_FOLDER, "mint");
+const mint = Keypair.generate();
 
 const keypair = Keypair.generate();
 
