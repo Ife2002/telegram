@@ -2,7 +2,7 @@ import * as TelegramBot from 'node-telegram-bot-api';
 import * as dotenv from 'dotenv';
 import { Command } from './commands';
 
-import { Connection, Keypair, PublicKey } from '@solana/web3.js';
+import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import { redis, testRedisConnection } from '../service/config/redis.config'
 import { UserRepository } from 'service/user.repository';
 import axios from 'axios';
@@ -40,6 +40,84 @@ interface TokenResponse {
     };
   };
 }
+
+interface JupPriceData {
+  id: string;
+  type: 'derivedPrice' | 'buyPrice';
+  price: string;
+}
+
+interface JupPriceResponse {
+  data: {
+    [key: string]: JupPriceData;
+  };
+  timeTaken: number;
+}
+
+
+interface HeliusTokenMetadata {
+  data: {
+  interface: 'FungibleToken';
+  id: string;
+  content: {
+    $schema: string;
+    json_uri: string;
+    files: Array<Record<string, unknown>>;
+    metadata: {
+      description: string;
+      name: string;
+      symbol: string;
+      token_standard: 'Fungible';
+    };
+    links: {
+      image: string;
+    };
+  };
+  authorities: Array<{
+    address: string;
+    scopes: Array<unknown>;
+  }>;
+  compression: {
+    eligible: boolean;
+    compressed: boolean;
+    data_hash: string;
+    creator_hash: string;
+    asset_hash: string;
+    tree: string;
+    seq: number;
+    leaf_id: number;
+  };
+  grouping: Array<unknown>;
+  royalty: {
+    royalty_model: 'creators';
+    target: null;
+    percent: number;
+    basis_points: number;
+    primary_sale_happened: boolean;
+    locked: boolean;
+  };
+  creators: Array<unknown>;
+  ownership: {
+    frozen: boolean;
+    delegated: boolean;
+    delegate: null;
+    ownership_model: 'token';
+    owner: string;
+  };
+  supply: null;
+  mutable: boolean;
+  burnt: boolean;
+  token_info: {
+    symbol: string;
+    supply: number;
+    decimals: number;
+    token_program: string;
+    price_info: {
+      price_per_token: number;
+      currency: 'USDC';
+    };
+  };
+}}
 
 const token: any = process.env.TELEGRAM || "";
 
@@ -88,6 +166,14 @@ bot.on('callback_query', async (callbackQuery: TelegramBot.CallbackQuery) => {
   const currentMessage = callbackQuery.message.text;
   const tokenAddress = currentMessage.match(/<code>(.*?)<\/code>/)?.[1] || '';
 
+  if (data?.startsWith('buyNow_')) {
+    // Extract the token address from the callback data
+    const tokenAddress = data.split('_')[1];
+    console.log('Executable --- BUY', tokenAddress);
+    await command.buyNow(bot, chatId, callbackQueryId, user, tokenAddress);
+    return;
+  }
+
   switch (data) {
     // case 'autobuy':
     // command.autobuy(bot, appUser, chatId)
@@ -121,26 +207,33 @@ bot.on('callback_query', async (callbackQuery: TelegramBot.CallbackQuery) => {
       // Validate it's a real public key
       new PublicKey(msg.text);
       
-      const response = await axios.get(`https://api.geckoterminal.com/api/v2/networks/solana/tokens/${msg.text}`);
+      // const response = await axios.get(`https://api.geckoterminal.com/api/v2/networks/solana/tokens/${msg.text}`);
+
+      const price = await axios.get<JupPriceResponse>(`https://api.jup.ag/price/v2?ids=${msg.text},So11111111111111111111111111111111111111112`);
+
+
+      const info: HeliusTokenMetadata = await axios.get(`https://narrative-server-production.up.railway.app/das/${msg.text}`);
+
+      const priceData = price.data;
 
       const { user, isNew, publicKey } = await UserRepository.getOrCreateUser(msg.from.id.toString(), bot, chatId);
 
       const solBalance = await connection.getBalance(new PublicKey(publicKey));
       
       // Access data correctly through response.data.data.attributes
-      const data = response.data.data.attributes;
+      // const data = response.data.data.attributes;
 
       const buyPriceFromConfig = await UserRepository.getBuyAmount(msg.from.id.toString())
 
 
       const message = `
-<b>🪙 BUY $${data.symbol.toUpperCase()} -- (${data.name})</b>
+      <b>🪙 BUY ${info.data.content.metadata.symbol.toLocaleUpperCase()} -- (${info.data.content.metadata.name})</b>
 <code>${msg.text}</code>
 
-<b>Balance: ${solBalance} SOL</b>
+<b>Balance: ${solBalance / LAMPORTS_PER_SOL} SOL</b>
 
-<b>Price: $${data?.price_usd} -- MC: $${Number(data?.fdv_usd).toLocaleString()}</b>
-`;
+<b>Price: $${priceData.data[msg.text]?.price} -- MC: $${ ((parseFloat(priceData.data[msg.text]?.price) * info.data.token_info.supply) / 1000000).toFixed(2)}</b>      
+      `;
   
       await bot.sendMessage(chatId, message, {
           parse_mode: 'HTML',
@@ -148,7 +241,7 @@ bot.on('callback_query', async (callbackQuery: TelegramBot.CallbackQuery) => {
           reply_markup: {
               inline_keyboard: [
                   [
-                      { text: '🛒 Buy', callback_data: `buy_${msg.text}` },
+                      { text: '🛒 Buy Now', callback_data: `buyNow_${msg.text}` },
                       { text: '⚡️ Buy At', callback_data: `buy_${msg.text}` }
                   ],
                   [
@@ -192,7 +285,7 @@ bot.onText(/\/start/, async (msg) => {
     bot.sendMessage(chatId, 
       `Solana · 🅴
 <code>${publicKey}</code>  <i>(Tap to copy)</i>\n 
-Balance: ${solBalance} SOL\n
+Balance: ${solBalance / LAMPORTS_PER_SOL} SOL\n
 
 
 Click on the Refresh button to update your current balance.

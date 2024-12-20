@@ -23,17 +23,18 @@ export const DEFAULT_SETTINGS: ISettings = {
 
   
 export interface UserType {
-    discordId: string | null;
-    telegramId: string | null;
-    walletId: string;
-    rank: number;
-    settings: ISettings;
-    autoBuy: boolean;
-    buddies: string[];
-    blacklisted: boolean;
-    buddyHash: string | null;
-    dateAdded: Date;
-    dateBlacklisted: Date | null;
+  discordId: string | null;
+  telegramId: string | null;
+  walletId: string;
+  encryptedPrivateKey: string;  // Add this field
+  rank: number;
+  settings: ISettings;
+  autoBuy: boolean;
+  buddies: string[];
+  blacklisted: boolean;
+  buddyHash: string | null;
+  dateAdded: Date;
+  dateBlacklisted: Date | null;
 }
 
 

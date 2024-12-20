@@ -26,27 +26,107 @@ export class Command {
     };
 
     async buy(bot: TelegramBot, chatId: TelegramBot.Chat["id"], callbackQueryId: TelegramBot.CallbackQuery["id"], user: number) {
+      try {
         await bot.answerCallbackQuery(callbackQueryId);
+      } catch (callbackError: any) {
+        // If it's just an expired callback query, log and continue
+        if (callbackError.response?.body?.error_code === 400 && 
+            callbackError.response?.body?.description?.includes('query is too old')) {
+          console.log('Callback query expired, continuing with purchase');
+        } else {
+          // For other callback-related errors, throw
+          throw callbackError;
+        }
+      }
         
         // Then send your message
         await bot.sendMessage(chatId, `Enter the token address you want to buy...`);
 
-        const { publicKey } = await UserRepository.getOrCreateUser(user.toString(), bot, chatId);
+        // const { publicKey } = await UserRepository.getOrCreateUser(user.toString(), bot, chatId);
 
         // const userPubkey = await appUser.wallet.address;
         // const encryptedPrivateKey = await appUser.wallet.encryptedPrivateKey
 
         // const userWallet = await this.vaultService.getWallet(userPubkey, encryptedPrivateKey)
 
+        // const userWallet = Keypair.generate();
+
         // let buyAmountSol = 0;
-        // let mint = new PublicKey("");
+        // let mint = new PublicKey(tokenAddress);
 
         // // potential problem. Why persist? in MongoDB? Mongo is disk based memory compare cost and latency
         // await appUser.save();
 
         
-        // buy(userWallet, this.pumpDotFunSDK, mint, buyAmountSol).then((result) => {console.log(result)})
+        // buy(userWallet, this.pumpDotFunSDK, mint, user).then((result) => {console.log(result)})
     }
+
+
+  async buyNow(
+    bot: TelegramBot,
+    chatId: TelegramBot.Chat["id"],
+    callbackQueryId: TelegramBot.CallbackQuery["id"],
+    user: number,
+    tokenAddress: string
+  ) {
+    try {
+      // Answer the callback query first
+      try {
+        await bot.answerCallbackQuery(callbackQueryId);
+      } catch (callbackError: any) {
+        // If it's just an expired callback query, log and continue
+        if (callbackError.response?.body?.error_code === 400 && 
+            callbackError.response?.body?.description?.includes('query is too old')) {
+          console.log('Callback query expired, continuing with purchase');
+        } else {
+          // For other callback-related errors, throw
+          throw callbackError;
+        }
+      }
+      
+      // Send initial message to user
+      await bot.sendMessage(chatId, `Initiating purchase of ${tokenAddress}...`);
+
+      // const userPubkey = await appUser.wallet.address;
+      // const encryptedPrivateKey = await appUser.wallet.encryptedPrivateKey
+
+      // const userWallet = await this.vaultService.getWallet(userPubkey, encryptedPrivateKey)
+      
+      // mint public key
+      let mint = new PublicKey(tokenAddress);
+      
+      // Attempt to execute buy
+      const result = await buy(this.pumpDotFunSDK, mint, user);
+      console.log(result);
+      
+      // Send success message to user
+      await bot.sendMessage(
+        chatId,
+        `✅ Successfully purchased token ${tokenAddress}`
+      );
+  
+    } catch (error) {
+      // Log the error
+      console.error('Buy operation failed:', error);
+      
+      // Send error message to user
+      let errorMessage = 'Failed to complete purchase. ';
+      
+      // Add more specific error information if available
+      if (error instanceof Error) {
+        errorMessage += `Error: ${error.message}`;
+      } else {
+        errorMessage += 'An unexpected error occurred.';
+      }
+      
+      // Send error message to user
+      await bot.sendMessage(chatId, `❌ ${errorMessage}`);
+      
+      // Re-throw the error if needed for higher-level error handling
+      throw error;
+    }
+  }
+
 
     async setBuyPrice(
         bot: TelegramBot,
@@ -60,7 +140,18 @@ export class Command {
         }
       ) {
         try {
-          await bot.answerCallbackQuery(callbackQueryId);
+          try {
+            await bot.answerCallbackQuery(callbackQueryId);
+          } catch (callbackError: any) {
+            // If it's just an expired callback query, log and continue
+            if (callbackError.response?.body?.error_code === 400 && 
+                callbackError.response?.body?.description?.includes('query is too old')) {
+              console.log('Callback query expired, continuing with purchase');
+            } else {
+              // For other callback-related errors, throw
+              throw callbackError;
+            }
+          }
           
           // Send a new message asking for amount
           const promptMsg = await bot.sendMessage(

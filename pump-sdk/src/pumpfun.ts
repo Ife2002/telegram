@@ -39,7 +39,10 @@ import {
     calculateWithSlippageSell,
     sendTx,
   } from "./util";
+  import { createNozomiConnection, sendTx as sendTxWithNozomi } from "./nozomi";
   import { PumpFun, IDL } from "./IDL";
+
+  
   const PROGRAM_ID = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
   const MPL_TOKEN_METADATA_PROGRAM_ID =
     "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s";
@@ -54,9 +57,11 @@ import {
   export class PumpFunSDK {
     public program: Program<PumpFun>;
     public connection: Connection;
+    public nozomiConnection: Connection
     constructor(provider?: AnchorProvider) {
       this.program = new Program<PumpFun>(IDL as PumpFun, provider);
       this.connection = this.program.provider.connection;
+      this.nozomiConnection = createNozomiConnection(process.env.NOZOMI_API || "")
     }
   
     async createAndBuy(
@@ -121,6 +126,8 @@ import {
       commitment: Commitment = DEFAULT_COMMITMENT,
       finality: Finality = DEFAULT_FINALITY
     ): Promise<TransactionResult> {
+
+      
       let buyTx = await this.getBuyInstructionsBySolAmount(
         buyer.publicKey,
         mint,
@@ -129,8 +136,8 @@ import {
         commitment
       );
   
-      let buyResults = await sendTx(
-        this.connection,
+      let buyResults = await sendTxWithNozomi(
+        this.nozomiConnection,
         buyTx,
         buyer.publicKey,
         [buyer],

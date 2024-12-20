@@ -2,6 +2,7 @@ import { redis } from './config/redis.config';
 import { DEFAULT_SETTINGS, ISettings, UserType } from '../types/user.types';
 import { Keypair } from '@solana/web3.js';
 import TelegramBot from 'node-telegram-bot-api';
+import bs58 from 'bs58'
 
 export class UserRepository {
   private static readonly USER_PREFIX = 'user:';
@@ -39,60 +40,6 @@ export class UserRepository {
       dateAdded: new Date(data.dateAdded),
       dateBlacklisted: data.dateBlacklisted ? new Date(data.dateBlacklisted) : null,
     } as UserType;
-  }
-
-  // Migration function to add default settings
-  static async migrateUserSettings(userId: string): Promise<void> {
-    const userKey = `${this.USER_PREFIX}${userId}`;
-    const settingsKey = `${this.SETTINGS_PREFIX}${userId}`;
-    
-    try {
-      // Get current user data
-      const userData = await redis.hgetall(userKey);
-      if (!userData) return;
-
-      // Get current settings
-      const currentSettings = JSON.parse(userData.settings || '{}');
-      
-      // Merge with default settings (keeping any existing values)
-      const mergedSettings = {
-        ...DEFAULT_SETTINGS,
-        ...currentSettings
-      };
-
-      // Update user document with merged settings
-      await redis.hset(userKey, 'settings', JSON.stringify(mergedSettings));
-
-      // Also store in separate settings hash for faster access
-      const multi = redis.multi();
-      Object.entries(mergedSettings).forEach(([key, value]) => {
-        multi.hset(settingsKey, key, JSON.stringify(value));
-      });
-      await multi.exec();
-
-    } catch (error) {
-      console.error('Error migrating user settings:', error);
-      throw error;
-    }
-  }
-
-  // Function to migrate all existing users
-  static async migrateAllUsersSettings(): Promise<void> {
-    try {
-      // Get all user keys
-      const userKeys = await redis.keys(`${this.USER_PREFIX}*`);
-      
-      // Process each user
-      for (const key of userKeys) {
-        const userId = key.replace(this.USER_PREFIX, '');
-        await this.migrateUserSettings(userId);
-      }
-      
-      console.log('Successfully migrated all user settings');
-    } catch (error) {
-      console.error('Error in migrateAllUsersSettings:', error);
-      throw error;
-    }
   }
 
   // Fast settings operations
@@ -141,7 +88,8 @@ export class UserRepository {
         dateAdded: userData.dateAdded.toISOString(),
         dateBlacklisted: userData.dateBlacklisted ? userData.dateBlacklisted.toISOString() : null,
         settings: JSON.stringify(DEFAULT_SETTINGS),
-        buddies: JSON.stringify(userData.buddies)
+        buddies: JSON.stringify(userData.buddies),
+        encryptedPrivateKey: userData.encryptedPrivateKey, 
       });
 
       // Create telegram index
@@ -162,22 +110,81 @@ export class UserRepository {
 
     const userData = await redis.hgetall(this.getUserKey(id));
     return userData ? this.deserializeUser(userData) : null;
-  }
+}
 
-  static async findByTelegramId(telegramId: string) {
+  static async findByTelegramId(telegramId: string): Promise<UserType | null> {
     try {
-      // First get the user ID from the telegram index
-      const userId = await redis.hget(this.TELEGRAM_INDEX_PREFIX, telegramId);
-      if (!userId) return null;
+        // First get the user ID from the telegram index
+        const userId = await redis.hget(this.TELEGRAM_INDEX_PREFIX, telegramId);
+        if (!userId) return null;
 
-      // Then get the user data
-      const userData = await redis.hgetall(`${this.USER_PREFIX}${userId}`);
-      return userData ? userData : null;
+        // Then get the user data
+        const userData = await redis.hgetall(`${this.USER_PREFIX}${userId}`);
+        // Change this line to properly deserialize the user data
+        return userData ? this.deserializeUser(userData) : null;
     } catch (error) {
-      console.error('Error finding user by Telegram ID:', error);
-      return null;
+        console.error('Error finding user by Telegram ID:', error);
+        return null;
     }
+}
+
+
+static async migrateUsersAddEncryptedKey(): Promise<void> {
+  try {
+      const userKeys = await redis.keys(`${this.USER_PREFIX}*`);
+      console.log(`Found ${userKeys.length} users to process`);
+
+      for (const key of userKeys) {
+          const userData = await redis.hgetall(key);
+          console.log('Processing user:', key);
+          
+          // Check if we need to convert from base64 to bs58
+          if (userData.encryptedPrivateKey && userData.encryptedPrivateKey.includes('==')) {
+              console.log('Converting base64 key to bs58:', key);
+              
+              try {
+                  // Convert from base64 to bs58
+                  const privateKeyBytes = Buffer.from(userData.encryptedPrivateKey, 'base64');
+                  const bs58PrivateKey = bs58.encode(privateKeyBytes);
+                  
+                  console.log('Generated bs58 key');
+
+                  // Update with bs58 encoded key
+                  await redis.hset(key, 'encryptedPrivateKey', bs58PrivateKey);
+                  console.log('Updated user with bs58 key:', key);
+              } catch (error) {
+                  console.error('Error converting key for user:', key, error);
+              }
+          } else if (!userData.encryptedPrivateKey) {
+              console.log('User needs new encrypted private key:', key);
+              
+              // Generate a new keypair for users without any key
+              const userkeypair = Keypair.generate();
+              const encryptedPrivateKey = bs58.encode(userkeypair.secretKey);
+              const newWalletId = userkeypair.publicKey.toBase58();
+              
+              // Use multi to ensure atomic update
+              const multi = redis.multi();
+              multi.hset(key, 'encryptedPrivateKey', encryptedPrivateKey);
+              multi.hset(key, 'walletId', newWalletId);
+              
+              await multi.exec();
+              console.log('Created new keys for user:', key);
+          }
+
+          // Verify the update
+          const updatedUser = await redis.hgetall(key);
+          console.log('Verification - Updated user data:', updatedUser);
+      }
+
+      console.log('Successfully migrated all users');
+  } catch (error) {
+      console.error('Error in migrateUsersAddEncryptedKey:', error);
+      console.error('Full error:', error.stack);
+      throw error;
   }
+}
+
   static async getOrCreateUser(telegramId: string, bot: TelegramBot, chatId: number) {
     try {
       // Try to find existing user
@@ -187,6 +194,7 @@ export class UserRepository {
       if (!user) {
         isNew = true;
         const userkeypair = Keypair.generate();
+        const encryptedPrivateKey = bs58.encode(userkeypair.secretKey);
         
         try {
           // Create new user with Solana wallet
@@ -194,6 +202,7 @@ export class UserRepository {
             telegramId,
             discordId: '', // Empty for Telegram-only users
             walletId: userkeypair.publicKey.toBase58(),
+            encryptedPrivateKey,
             rank: 1,
             settings: DEFAULT_SETTINGS,
             autoBuy: false,
@@ -259,6 +268,19 @@ export class UserRepository {
     await redis.del(key);
     return true;
   }
+
+  static async getEncryptedPrivateKeyByTelegramId(telegramId: string): Promise<string | null> {
+    try {
+        const user = await this.findByTelegramId(telegramId);
+        if (!user || !user.encryptedPrivateKey) {
+            return null;
+        }
+        return user.encryptedPrivateKey;
+    } catch (error) {
+        console.error('Error getting encrypted private key:', error);
+        return null;
+    }
+}
 
   // Additional utility methods
   static async getAllUsers(): Promise<UserType[]> {
