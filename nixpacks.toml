@@ -1,20 +1,14 @@
 [phases.setup]
-nixPkgs = ['nodejs', 'npm']
-aptPkgs = ['git']
+nixPkgs = ['nodejs']
 
 [phases.install]
 cmds = [
-  'ls -la',  # Let's see what files are available
-  'pwd',     # Check current directory
-  'cd pump-sdk && npm install && ls -la && npm run build || echo "SDK build failed"',
-  'cd ../bot && npm install || echo "Bot install failed"'
+  'cd pump-sdk && npm install && npm run build',
+  'npm install'
 ]
 
 [phases.build]
-cmds = [
-  'cd bot && npm run build || echo "Build failed"',
-  'ls -la dist || echo "No dist directory found"'
-]
+cmds = ['npm run build']
 
 [start]
-cmd = 'cd bot && npm run start:prod'
+cmd = 'npm run start'
