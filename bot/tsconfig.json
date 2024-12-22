@@ -4,9 +4,7 @@
     "declaration": true,
     "removeComments": true,
     "types": ["node", "node-vault"],
-    "paths": {
-      "bn.js": ["./node_modules/@types/bn.js"]
-    },
+    "pumpdotfun-sdk": ["./pump-sdk/src"],
     "resolveJsonModule": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
