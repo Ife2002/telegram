@@ -2,7 +2,7 @@ import TelegramBot from "node-telegram-bot-api";
 import { autobuy } from "./autobuy";
 import { buy } from "./buy";
 // import { UserType } from "storage/db/user.model";
-import { PumpFunSDK } from "pumpdotfun-sdk";
+import { PumpFunSDK } from "../../../pump-sdk/src";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { VaultService } from "service/vault.service";
 import { AnchorProvider } from "@coral-xyz/anchor";
