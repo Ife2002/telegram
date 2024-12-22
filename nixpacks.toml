@@ -8,4 +8,4 @@ cmds = ['npm install']
 cmds = ['cd bot && npm run build']
 
 [start]
-cmd = 'cd bot && npm run start:prod'
+cmd = 'cd bot && npm run start:dev'
