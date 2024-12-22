@@ -1,5 +1,5 @@
 import { Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
-import { PumpFunSDK, TransactionResult } from "../../../pump-sdk/src";
+import { PumpFunSDK, TransactionResult } from "pumpdotfun-sdk";
 import { UserService } from "service/user.service";
 import bs58 from 'bs58'
 import { UserRepository } from "service/user.repository";

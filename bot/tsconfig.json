@@ -4,7 +4,6 @@
     "declaration": true,
     "removeComments": true,
     "types": ["node", "node-vault"],
-    "pumpdotfun-sdk": ["./pump-sdk/src"],
     "resolveJsonModule": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,

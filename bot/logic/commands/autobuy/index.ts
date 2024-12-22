@@ -2,7 +2,7 @@ import { AnchorProvider } from '@coral-xyz/anchor';
 import NodeWallet from '@coral-xyz/anchor/dist/cjs/nodewallet';
 import { bs58 } from "@coral-xyz/anchor/dist/cjs/utils/bytes";
 import { Connection, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { PumpFunSDK } from '../../../pump-sdk/src';
+import { PumpFunSDK } from 'pumpdotfun-sdk';
 import fs from "fs";
 
 const KEYS_FOLDER = __dirname + "/.keys";
