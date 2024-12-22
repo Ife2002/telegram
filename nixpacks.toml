@@ -1,0 +1,17 @@
+[phases.setup]
+nixPkgs = ['nodejs']
+
+[phases.install]
+cmds = [
+  'cd pump-sdk && npm install && npm run build',
+  'cd ../bot && npm install'
+]
+
+[phases.build]
+cmds = [
+  'cd bot',
+  'npm run build'
+]
+
+[start]
+cmd = 'cd bot && NODE_ENV=production npm run start'
