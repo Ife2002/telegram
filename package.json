@@ -1,8 +1,0 @@
-{
-    "name": "ava-workspace",
-    "private": true,
-    "workspaces": [
-      "bot",
-      "pump-sdk"
-    ]
-  }

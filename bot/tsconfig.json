@@ -4,6 +4,10 @@
     "declaration": true,
     "removeComments": true,
     "types": ["node", "node-vault"],
+    "paths": {
+      "bn.js": ["./node_modules/@types/bn.js"]
+    },
+    "resolveJsonModule": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
