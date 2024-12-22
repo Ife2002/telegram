@@ -1,7 +1,7 @@
 [phases.setup]
 cmds = [
-  "cp -r ../pump-sdk ./pump-sdk",
-  "sed -i 's/\"file:..\/pump-sdk\"/\"file:.\/pump-sdk\"/g' package.json"
+    "cp -r ../pump-sdk ./pump-sdk",
+    "sed -i 's/\"file:..\/pump-sdk\"/\"file:.\\/pump-sdk\"/g' package.json"
 ]
 
 [phases.install]
