@@ -36,7 +36,7 @@
     "mongoose": "^8.8.4",
     "node-telegram-bot-api": "^0.66.0",
     "node-vault": "^0.10.2",
-    "pumpdotfun-sdk": "file:../pump-sdk",
+    "pumpdotfun-sdk": "file:./pump-sdk",
     "redis-om": "^0.4.7",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1"
