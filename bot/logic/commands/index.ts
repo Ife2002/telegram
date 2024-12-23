@@ -96,7 +96,7 @@ export class Command {
       let mint = new PublicKey(tokenAddress);
       
       // Attempt to execute buy
-      const result = await buy(this.pumpDotFunSDK, mint, user);
+      const result = await buy(bot, chatId, this.pumpDotFunSDK, mint, user);
       console.log(result);
       
       // Send success message to user

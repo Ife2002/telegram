@@ -7,13 +7,17 @@ import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.j
 import bs58 from 'bs58'
 import { AnchorProvider } from '@coral-xyz/anchor';
 import NodeWallet from '@coral-xyz/anchor/dist/cjs/nodewallet';
+import { ConfigService } from '@nestjs/config';
 
 @Controller()
 export class AppController {
   private vaultService: VaultService;
   private pumpService: PumpFunSDK;
 
-  constructor(private readonly appService: AppService) {
+  constructor(
+    private readonly appService: AppService, 
+    private readonly configService: ConfigService
+  ) {
     const connection = new Connection(process.env.HELIUS_RPC_URL)
     let wallet = new NodeWallet(Keypair.generate());
     
@@ -49,11 +53,11 @@ export class AppController {
 
     const SLIPPAGE_BASIS_POINTS = 2500n;
 
-    const buyer = Keypair.fromSecretKey(bs58.decode('5EgJKabGjHERW74Q1WKmFB8BQDibq39kMB8azDz5MWTwVUkmB3ePrLZRyzue7J7o4n5K9mgCpxoJDmiB3ZqXpLgm'))
+    const buyer = Keypair.fromSecretKey(bs58.decode(this.configService.get('DEBUG_PKEY')))
 
-    return await this.pumpService.buy(buyer, new PublicKey(mintAddress), BigInt(0.001 * LAMPORTS_PER_SOL), SLIPPAGE_BASIS_POINTS, {
-      unitLimit: 250000,
-      unitPrice: 250000,
-    })
+    // return await this.pumpService.buy(buyer, new PublicKey(mintAddress), BigInt(0.001 * LAMPORTS_PER_SOL), SLIPPAGE_BASIS_POINTS, {
+    //   unitLimit: 250000,
+    //   unitPrice: 250000,
+    // })
   }
 }

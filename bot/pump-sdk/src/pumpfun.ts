@@ -40,6 +40,7 @@ import {
     sendTx,
   } from "./util";
   import { createNozomiConnection, sendTx as sendTxWithNozomi } from "./nozomi";
+  import TelegramBot from "node-telegram-bot-api";
   import { PumpFun, IDL } from "./IDL";
 
   
@@ -61,10 +62,17 @@ import {
     constructor(provider?: AnchorProvider) {
       this.program = new Program<PumpFun>(IDL as PumpFun, provider);
       this.connection = this.program.provider.connection;
+
+      const nozomiApiKey = process.env.NOZOMI_API;
+      if (!nozomiApiKey) {
+        throw new Error("NOZOMI_API environment variable is not set");
+      }
       this.nozomiConnection = createNozomiConnection(process.env.NOZOMI_API || "")
     }
   
     async createAndBuy(
+      bot: TelegramBot,
+      chatId: TelegramBot.Chat["id"],
       creator: Keypair,
       mint: Keypair,
       createTokenMetadata: CreateTokenMetadata,
@@ -106,6 +114,8 @@ import {
       }
   
       let createResults = await sendTx(
+        bot,
+        chatId,
         this.connection,
         newTx,
         creator.publicKey,
@@ -118,6 +128,8 @@ import {
     }
   
     async buy(
+      bot: TelegramBot,
+      chatId: TelegramBot.Chat["id"],
       buyer: Keypair,
       mint: PublicKey,
       buyAmountSol: bigint,
@@ -136,8 +148,10 @@ import {
         commitment
       );
   
-      let buyResults = await sendTxWithNozomi(
-        this.nozomiConnection,
+      let buyResults = await sendTx(
+        bot,
+        chatId,
+        this.connection,
         buyTx,
         buyer.publicKey,
         [buyer],
@@ -149,6 +163,8 @@ import {
     }
   
     async sell(
+      bot: TelegramBot,
+      chatId: TelegramBot.Chat["id"],
       seller: Keypair,
       mint: PublicKey,
       sellTokenAmount: bigint,
@@ -166,6 +182,8 @@ import {
       );
   
       let sellResults = await sendTx(
+        bot,
+        chatId,
         this.connection,
         sellTx,
         seller.publicKey,

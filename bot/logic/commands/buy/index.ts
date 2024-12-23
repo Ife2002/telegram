@@ -3,11 +3,14 @@ import { PumpFunSDK, TransactionResult } from "pumpdotfun-sdk";
 import { UserService } from "service/user.service";
 import bs58 from 'bs58'
 import { UserRepository } from "service/user.repository";
+import TelegramBot from "node-telegram-bot-api";
 
 const SLIPPAGE_BASIS_POINTS = 3000n;
 // call a service
 
 export async function buy(
+  bot: TelegramBot,
+  chatId: TelegramBot.Chat["id"],
   sdk: PumpFunSDK,
   mint: PublicKey,
   user: number
@@ -32,6 +35,8 @@ export async function buy(
 
     // Execute buy transaction
     const tx = await sdk.buy(
+      bot,
+      chatId,
       userWallet,
       mint,
       buyAmountLamports,

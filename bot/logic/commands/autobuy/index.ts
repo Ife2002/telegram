@@ -31,8 +31,8 @@ const keypair = Keypair.generate();
 export function autobuy() {
     // TO:DO move the helpers to separate file getProvider() getOrCreateKeypair(), ask how the private keys from the vaults are created
 
-    sdk.buy(keypair, mint.publicKey, BigInt(0.0001 * LAMPORTS_PER_SOL), SLIPPAGE_BASIS_POINTS, {
-        unitLimit: 250000,
-        unitPrice: 250000,
-      });
+    // sdk.buy(keypair, mint.publicKey, BigInt(0.0001 * LAMPORTS_PER_SOL), SLIPPAGE_BASIS_POINTS, {
+    //     unitLimit: 250000,
+    //     unitPrice: 250000,
+    //   });
 }

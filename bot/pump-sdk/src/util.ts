@@ -12,8 +12,9 @@ import {
     VersionedTransactionResponse,
   } from "@solana/web3.js";
   import { PriorityFee, TransactionResult } from "./types";
+import TelegramBot from "node-telegram-bot-api";
   
-  export const DEFAULT_COMMITMENT: Commitment = "processed";
+  export const DEFAULT_COMMITMENT: Commitment = "finalized";
   export const DEFAULT_FINALITY: Finality = "confirmed";
   
   export const calculateWithSlippageBuy = (
@@ -31,6 +32,8 @@ import {
   };
   
   export async function sendTx(
+    bot: TelegramBot,
+    chatId: TelegramBot.Chat["id"],
     connection: Connection,
     tx: Transaction,
     payer: PublicKey,
@@ -63,6 +66,8 @@ import {
         skipPreflight: false,
       });
       console.log("sig:", `https://solscan.io/tx/${sig}`);
+
+      bot.sendMessage(chatId, `https://solscan.io/tx/${sig}`);
   
       let txResult = await getTxDetails(connection, sig, commitment, finality);
       if (!txResult) {
