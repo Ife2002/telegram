@@ -1,0 +1,15 @@
+{
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+      "moduleResolution": "node",
+      "resolveJsonModule": true,
+      "paths": {
+      "bn.js": ["./node_modules/@types/bn.js"]
+      },
+      "allowSyntheticDefaultImports": true,
+      "module": "es2022",
+      "target": "es2022",
+      "outDir": "dist/esm/",
+      "rootDir": "./src",
+    }
+}
