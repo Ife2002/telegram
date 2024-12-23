@@ -1,0 +1,16 @@
+[phases.setup]
+nixPkgs = ["nodejs", "yarn"]  # or npm if you're using npm
+
+[phases.install]
+cmds = [
+  # First install and build the SDK
+  "cd pump-sdk && npm install && npm run build && cd ..",
+  # Then install main project dependencies
+  "npm install"
+]
+
+[phases.build]
+cmds = [
+  # Build the main project
+  "npm run build"
+]
