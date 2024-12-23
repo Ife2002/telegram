@@ -65,9 +65,27 @@ import TelegramBot from "node-telegram-bot-api";
       const sig = await connection.sendTransaction(versionedTx, {
         skipPreflight: false,
       });
+      
       console.log("sig:", `https://solscan.io/tx/${sig}`);
 
-      bot.sendMessage(chatId, `https://solscan.io/tx/${sig}`);
+      if (!sig) {
+        console.error("No signature returned from transaction");
+        return {
+          success: false,
+          error: "No signature returned from transaction",
+        };
+      }
+  
+      // console.log("sig:", `https://solscan.io/tx/${sig}`);
+  
+      // Only send message if we have a valid signature
+      const messageText = `Transaction sent: https://solscan.io/tx/${sig}`;
+      try {
+        await bot.sendMessage(chatId, messageText);
+      } catch (botError) {
+        console.error("Failed to send Telegram message:", botError);
+        // Continue with transaction processing even if message fails
+      }
   
       let txResult = await getTxDetails(connection, sig, commitment, finality);
       if (!txResult) {
