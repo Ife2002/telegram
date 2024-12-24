@@ -169,7 +169,6 @@ bot.on('callback_query', async (callbackQuery: TelegramBot.CallbackQuery) => {
   if (data?.startsWith('buyNow_')) {
     // Extract the token address from the callback data
     const tokenAddress = data.split('_')[1];
-    console.log('Executable --- BUY', tokenAddress);
     await command.buyNow(bot, chatId, callbackQueryId, user, tokenAddress);
     return;
   }
@@ -246,7 +245,7 @@ bot.on('callback_query', async (callbackQuery: TelegramBot.CallbackQuery) => {
                   ],
                   [
                     { text: `Set Buy Price - ${buyPriceFromConfig || '0'} SOL`, callback_data: `setBuyPrice` },
-                ]
+                  ]
               ]
           }
       });

@@ -25,7 +25,7 @@ export class Command {
         this.vaultService = new VaultService()
     };
 
-    async buy(bot: TelegramBot, chatId: TelegramBot.Chat["id"], callbackQueryId: TelegramBot.CallbackQuery["id"], user: number) {
+  async buy(bot: TelegramBot, chatId: TelegramBot.Chat["id"], callbackQueryId: TelegramBot.CallbackQuery["id"], user: number) {
       try {
         await bot.answerCallbackQuery(callbackQueryId);
       } catch (callbackError: any) {
@@ -59,7 +59,22 @@ export class Command {
 
         
         // buy(userWallet, this.pumpDotFunSDK, mint, user).then((result) => {console.log(result)})
+  }
+
+  async sell(bot: TelegramBot, chatId: TelegramBot.Chat["id"], callbackQueryId: TelegramBot.CallbackQuery["id"], user: number) {
+    try {
+      await bot.answerCallbackQuery(callbackQueryId);
+    } catch (callbackError: any) {
+      // If it's just an expired callback query, log and continue
+      if (callbackError.response?.body?.error_code === 400 && 
+          callbackError.response?.body?.description?.includes('query is too old')) {
+        console.log('Callback query expired, continuing with purchase');
+      } else {
+        // For other callback-related errors, throw
+        throw callbackError;
+      }
     }
+  }
 
 
   async buyNow(
@@ -128,7 +143,7 @@ export class Command {
   }
 
 
-    async setBuyPrice(
+  async setBuyPrice(
         bot: TelegramBot,
         chatId: TelegramBot.Chat["id"],
         callbackQueryId: TelegramBot.CallbackQuery["id"],
@@ -183,7 +198,7 @@ export class Command {
                         { text: '⚡️ Buy At', callback_data: `buy_${messageData.tokenAddress}` }
                       ],
                       [
-                        { text: `Set Buy Price - 0 SOL`, callback_data: 'setBuyPrice' }
+                        { text: `Wrong Input! Set only positive number`, callback_data: 'setBuyPrice' }
                       ]
                     ]
                   },
@@ -270,7 +285,7 @@ export class Command {
             }
           );
         }
-      }
+  }
 }
 
     

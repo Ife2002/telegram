@@ -14,7 +14,7 @@ import {
   import { PriorityFee, TransactionResult } from "./types";
 import TelegramBot from "node-telegram-bot-api";
   
-  export const DEFAULT_COMMITMENT: Commitment = "finalized";
+  export const DEFAULT_COMMITMENT: Commitment = "confirmed";
   export const DEFAULT_FINALITY: Finality = "confirmed";
   
   export const calculateWithSlippageBuy = (
@@ -64,9 +64,8 @@ import TelegramBot from "node-telegram-bot-api";
     try {
       const sig = await connection.sendTransaction(versionedTx, {
         skipPreflight: false,
+        maxRetries: 3
       });
-      
-      console.log("sig:", `https://solscan.io/tx/${sig}`);
 
       if (!sig) {
         console.error("No signature returned from transaction");
@@ -75,9 +74,7 @@ import TelegramBot from "node-telegram-bot-api";
           error: "No signature returned from transaction",
         };
       }
-  
-      // console.log("sig:", `https://solscan.io/tx/${sig}`);
-  
+    
       // Only send message if we have a valid signature
       const messageText = `Transaction sent: https://solscan.io/tx/${sig}`;
       try {
@@ -120,7 +117,7 @@ import TelegramBot from "node-telegram-bot-api";
     tx: Transaction,
     commitment: Commitment = DEFAULT_COMMITMENT
   ): Promise<VersionedTransaction> => {
-    const blockHash = (await connection.getLatestBlockhash(commitment))
+    const blockHash = (await connection.getLatestBlockhash('finalized'))
       .blockhash;
   
     let messageV0 = new TransactionMessage({
