@@ -179,6 +179,9 @@ bot.on('callback_query', async (callbackQuery: TelegramBot.CallbackQuery) => {
     case 'buy':
     await command.buy(bot, chatId, callbackQueryId, user)
     break;
+    case 'sell':
+    await command.sell(bot, chatId, callbackQueryId, user)
+    break;
     case 'setBuyPrice':
       await command.setBuyPrice(
         bot, 
@@ -262,6 +265,7 @@ bot.on('callback_query', async (callbackQuery: TelegramBot.CallbackQuery) => {
 
 const commands = [
   { command: 'buy', description: 'Buy a token based on the contact address' },
+  { command: 'sell', description: 'Sell a token based on the contact address' },
   { command: 'start', description: 'Start or Restart Avalanche' },
 ];
 
@@ -294,7 +298,7 @@ Click on the Refresh button to update your current balance.
       inline_keyboard: [
         [
           { text: '💰 Buy', callback_data: 'buy' },
-          { text: 'Sell', callback_data: 'buy' },
+          { text: 'Sell', callback_data: 'sell' },
         ],
       ],
     },

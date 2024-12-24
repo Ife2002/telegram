@@ -8,10 +8,15 @@ import { VaultService } from "service/vault.service";
 import { AnchorProvider } from "@coral-xyz/anchor";
 import NodeWallet from "@coral-xyz/anchor/dist/cjs/nodewallet";
 import { UserRepository } from "service/user.repository";
+import { sell } from "./sell";
+import axios from "axios";
+
+const activeTokens = new Map<number, { id: string, balance: number, tokenData: any }>();
 
 export class Command {
     private pumpDotFunSDK: PumpFunSDK
     private vaultService: VaultService
+    private userRepo: UserRepository
     
     constructor(connection: Connection) {
         
@@ -23,7 +28,31 @@ export class Command {
 
         this.pumpDotFunSDK = new PumpFunSDK(provider);
         this.vaultService = new VaultService()
+        this.userRepo = new UserRepository();
     };
+
+    private createKeyboard(chatId: number, OwnerTokensInfo: any) {
+      const activeTokenData = activeTokens.get(chatId);
+      const activeTokenId = activeTokenData?.id; // Get the id from the stored data
+      
+      const tokenButtons = OwnerTokensInfo.items.map(token => [{
+          text: `${token.id === activeTokenId ? '✓ ' : ''}${token.content.metadata.name}`,
+          callback_data: `select_token:${token.id}`
+      }]);
+  
+      const sellButtons = [[
+          { text: 'Sell 25%', callback_data: 'sell:25' },
+          { text: 'Sell 50%', callback_data: 'sell:50' },
+          { text: 'Sell 100%', callback_data: 'sell:100' }
+      ]];
+  
+      return {
+          inline_keyboard: [
+              ...tokenButtons,
+              sellButtons[0]
+          ]
+      };
+  }
 
   async buy(bot: TelegramBot, chatId: TelegramBot.Chat["id"], callbackQueryId: TelegramBot.CallbackQuery["id"], user: number) {
       try {
@@ -63,18 +92,100 @@ export class Command {
 
   async sell(bot: TelegramBot, chatId: TelegramBot.Chat["id"], callbackQueryId: TelegramBot.CallbackQuery["id"], user: number) {
     try {
-      await bot.answerCallbackQuery(callbackQueryId);
+        await bot.answerCallbackQuery(callbackQueryId);
     } catch (callbackError: any) {
-      // If it's just an expired callback query, log and continue
-      if (callbackError.response?.body?.error_code === 400 && 
-          callbackError.response?.body?.description?.includes('query is too old')) {
-        console.log('Callback query expired, continuing with purchase');
-      } else {
-        // For other callback-related errors, throw
-        throw callbackError;
-      }
+        if (callbackError.response?.body?.error_code === 400 && 
+            callbackError.response?.body?.description?.includes('query is too old')) {
+            console.log('Callback query expired, continuing with purchase');
+        } else {
+            throw callbackError;
+        }
     }
-  }
+
+    const { walletId } = await UserRepository.findByTelegramId(user.toString());
+    const getTokensByOwnerUrl = `https://narrative-server-production.up.railway.app/das/fungible/${walletId}`;
+    const getTokensByOwner = await axios.get(getTokensByOwnerUrl);
+    const OwnerTokensInfo = await getTokensByOwner.data;
+
+    const message = OwnerTokensInfo.items.map(token => {
+        const balance = token.token_info.balance / Math.pow(10, token.token_info.decimals);
+        const price = token.token_info.price_info.price_per_token;
+        const totalValue = balance * price;
+        
+        return `*Token*: ${token.content.metadata.name}\n\`${token.id}\`
+*Balance:* ${balance.toLocaleString()} ${token.token_info.symbol}
+*Price:* $${price.toFixed(8)} ${token.token_info.price_info.currency}
+*Total Value:* $${totalValue.toFixed(2)}`;
+    }).join('\n\n');
+
+    const sentMessage = await bot.sendMessage(chatId, message, {
+        parse_mode: "Markdown",
+        reply_markup: this.createKeyboard(chatId, OwnerTokensInfo)
+    });
+
+    // Set up one-time callback handler for this specific message
+    const callbackHandler = async (query: TelegramBot.CallbackQuery) => {
+        if (!query.message || query.message.message_id !== sentMessage.message_id) return;
+
+        const [action, value] = query.data.split(':');
+        
+        if (action === 'select_token') {
+          
+        const token = OwnerTokensInfo.items.find(t => t.id === value);
+        const balance = token.token_info.balance / Math.pow(10, token.token_info.decimals);
+
+        activeTokens.set(chatId, {
+          id: token.id,
+          balance: balance,
+          tokenData: token // Store full token data if needed
+        });
+            
+            await bot.editMessageReplyMarkup(
+                this.createKeyboard(chatId, OwnerTokensInfo),
+                {
+                    chat_id: chatId,
+                    message_id: sentMessage.message_id
+                }
+            );
+            
+            await bot.answerCallbackQuery(query.id, {
+                text: `Selected token: ${token.content.metadata.name}`
+            });
+        }
+        
+        if (action === 'sell') {
+            const activeToken = activeTokens.get(chatId);
+            if (!activeToken) {
+                await bot.answerCallbackQuery(query.id, {
+                    text: 'Please select a token first'
+                });
+                return;
+            }
+            const percentage = parseInt(value);
+            await bot.answerCallbackQuery(query.id, {
+                text: `Selling ${percentage}% of the selected token`
+            });
+            
+            // Execute sell logic here using this.pumpDotFunSDK
+            try {
+
+                const balanceToSell = activeToken.balance * (percentage / 100);
+                await sell(bot, chatId, balanceToSell, this.pumpDotFunSDK, new PublicKey(activeToken.id), user)
+                await bot.sendMessage(chatId, `✅ Sold  ${percentage}% of your tokens`);
+            } catch (error) {
+                await bot.sendMessage(chatId, `❌ Failed to place sell order: ${error.message}`);
+            }
+        }
+    };
+
+    // Add the callback handler
+    bot.on('callback_query', callbackHandler);
+
+    // Optional: Remove the handler after some time (e.g., 1 hour)
+    setTimeout(() => {
+        bot.removeListener('callback_query', callbackHandler);
+    }, 3600000);
+}
 
 
   async buyNow(

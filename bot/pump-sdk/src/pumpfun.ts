@@ -192,6 +192,7 @@ import {
         commitment,
         finality
       );
+      
       return sellResults;
     }
   
