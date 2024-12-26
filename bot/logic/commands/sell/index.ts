@@ -4,6 +4,7 @@ import { UserService } from "service/user.service";
 import bs58 from 'bs58'
 import { UserRepository } from "service/user.repository";
 import TelegramBot from "node-telegram-bot-api";
+import { toBigIntPrecise } from "logic/utils";
 
 const SLIPPAGE_BASIS_POINTS = 3000n;
 // call a service
@@ -27,7 +28,7 @@ export async function sell(
     const userWallet = Keypair.fromSecretKey(bs58.decode(encryptedPrivateKey));
 
     // Calculate buy amount in lamports
-    const sellAmountBN = BigInt(amount * 1000000);
+    const sellAmountBN = toBigIntPrecise(amount);
 
     // Execute buy transaction
     const tx = await sdk.sell(
