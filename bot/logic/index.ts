@@ -9,6 +9,7 @@ import axios from 'axios';
 import { AnchorProvider } from '@coral-xyz/anchor';
 import NodeWallet from '@coral-xyz/anchor/dist/cjs/nodewallet';
 import { PumpFunSDK } from 'pumpdotfun-sdk';
+import { getTokenInfo } from './utils/getTokenInfo';
 
 dotenv.config();
 
@@ -50,7 +51,7 @@ interface JupPriceData {
   price: string;
 }
 
-interface JupPriceResponse {
+export interface JupPriceResponse {
   data: {
     [key: string]: JupPriceData;
   };
@@ -58,7 +59,7 @@ interface JupPriceResponse {
 }
 
 
-interface HeliusTokenMetadata {
+export interface HeliusTokenMetadata {
   data: {
   interface: 'FungibleToken';
   id: string;
@@ -217,45 +218,23 @@ bot.on('callback_query', async (callbackQuery: TelegramBot.CallbackQuery) => {
     try {
       // Validate it's a real public key
       new PublicKey(msg.text);
-      
-      // const response = await axios.get(`https://api.geckoterminal.com/api/v2/networks/solana/tokens/${msg.text}`);
 
-      const getSolPriceUrl = await axios.get(`https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112`);
-      const solPrice: number = getSolPriceUrl.data.data['So11111111111111111111111111111111111111112'].price;
+      const tokenInfo = await getTokenInfo(pumpService, msg?.text);
 
-      const account = await pumpService.getBondingCurveAccount(new PublicKey(msg.text));
-  
-      if (!account) return null;
-
-      const mcapInSOL = account.getMarketCapSOL();
-
-      const mcap = ((Number(mcapInSOL)/ LAMPORTS_PER_SOL) * solPrice);
-
-      
-
-      const price = await axios.get<JupPriceResponse>(`https://api.jup.ag/price/v2?ids=${msg.text},So11111111111111111111111111111111111111112`);
-
-      const info: HeliusTokenMetadata = await axios.get(`https://narrative-server-production.up.railway.app/das/${msg.text}`);
-
-      const priceData = price.data;
-
-      const { user, isNew, publicKey } = await UserRepository.getOrCreateUser(msg.from.id.toString(), bot, chatId);
+      const { publicKey } = await UserRepository.getOrCreateUser(msg.from.id.toString(), bot, chatId);
 
       const solBalance = await connection.getBalance(new PublicKey(publicKey));
-      
-      // Access data correctly through response.data.data.attributes
-      // const data = response.data.data.attributes;
 
       const buyPriceFromConfig = await UserRepository.getBuyAmount(msg.from.id.toString())
 
 
       const message = `
-      <b>🪙 BUY ${info.data.content.metadata.symbol.toLocaleUpperCase()} -- (${info.data.content.metadata.name})</b>
+      <b>🪙 BUY ${tokenInfo.symbol.toLocaleUpperCase()} -- (${tokenInfo.name})</b>
 <code>${msg.text}</code>
 
 <b>Balance: ${solBalance / LAMPORTS_PER_SOL} SOL</b>
 
-<b>Price: $${priceData.data[msg.text]?.price} -- MC: $${mcap.toFixed(2)}</b>      
+<b>Price: $${tokenInfo.price} -- MC: $${tokenInfo.mCap.toFixed(2)}</b>      
       `;
   
       await bot.sendMessage(chatId, message, {

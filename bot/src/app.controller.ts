@@ -9,6 +9,9 @@ import { AnchorProvider } from '@coral-xyz/anchor';
 import NodeWallet from '@coral-xyz/anchor/dist/cjs/nodewallet';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import { getMarketFromDexscreener } from 'logic/utils/dexscreener';
+import { preBondingMarketInfo } from 'logic/utils/preBondingMarketInfo';
+import { getTokenInfo } from 'logic/utils/getTokenInfo';
 
 @Controller()
 export class AppController {
@@ -31,8 +34,9 @@ export class AppController {
   }
 
   @Get()
-  async getHello(): Promise<string> {
-    return this.appService.getHello();
+  async getHello(): Promise<any> {
+    const mm = await getTokenInfo(this.pumpService, '3uXBAmJDoCR1J48t52HmnDBuW8uFcyMkFzvreiogksF2');
+    return mm
   }
 
   @Get('listWallets')
