@@ -8,6 +8,7 @@ import bs58 from 'bs58'
 import { AnchorProvider } from '@coral-xyz/anchor';
 import NodeWallet from '@coral-xyz/anchor/dist/cjs/nodewallet';
 import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
 
 @Controller()
 export class AppController {
@@ -30,7 +31,7 @@ export class AppController {
   }
 
   @Get()
-  getHello(): string {
+  async getHello(): Promise<string> {
     return this.appService.getHello();
   }
 
@@ -59,5 +60,29 @@ export class AppController {
     //   unitLimit: 250000,
     //   unitPrice: 250000,
     // })
+  }
+
+  @Get('gmcap/:mintAddress')
+  async getMcap(
+    @Param('mintAddress') mintAddress: string,
+  ): Promise<any> {
+
+    const account = await this.pumpService.getBondingCurveAccount(new PublicKey(mintAddress));
+  
+    if (!account) return null;
+
+    const mcap = account.getMarketCapSOL()
+
+    console.log('Market Cap SOL:', ((Number(mcap)/ LAMPORTS_PER_SOL) * 189));
+    
+    return {
+      discriminator: account.discriminator.toString(),
+      virtualTokenReserves: account.virtualTokenReserves.toString(),
+      virtualSolReserves: account.virtualSolReserves.toString(),
+      realTokenReserves: account.realTokenReserves.toString(),
+      realSolReserves: account.realSolReserves.toString(),
+      tokenTotalSupply: account.tokenTotalSupply.toString(),
+      complete: account.complete
+    };
   }
 }

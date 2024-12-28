@@ -6,6 +6,9 @@ import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.j
 import { redis, testRedisConnection } from '../service/config/redis.config'
 import { UserRepository } from 'service/user.repository';
 import axios from 'axios';
+import { AnchorProvider } from '@coral-xyz/anchor';
+import NodeWallet from '@coral-xyz/anchor/dist/cjs/nodewallet';
+import { PumpFunSDK } from 'pumpdotfun-sdk';
 
 dotenv.config();
 
@@ -130,6 +133,14 @@ console.log('Bot instance created');
 const connection = new Connection(process.env.HELIUS_RPC_URL);
 const command = new Command(connection);
 
+let wallet = new NodeWallet(Keypair.generate());
+    
+    const provider = new AnchorProvider(connection, wallet, {
+      commitment: "finalized",
+      });
+
+const pumpService = new PumpFunSDK(provider)
+
 bot.on('polling_error', (error) => {
   console.error('Polling error:', error);
 });
@@ -156,8 +167,6 @@ bot.on('callback_query', async (callbackQuery: TelegramBot.CallbackQuery) => {
   const data = callbackQuery.data;
 
   const user = callbackQuery.from.id
-
-  console.log()
 
   const callbackQueryId = callbackQuery.id;
   const messageId = callbackQuery.message.message_id;
@@ -211,8 +220,20 @@ bot.on('callback_query', async (callbackQuery: TelegramBot.CallbackQuery) => {
       
       // const response = await axios.get(`https://api.geckoterminal.com/api/v2/networks/solana/tokens/${msg.text}`);
 
-      const price = await axios.get<JupPriceResponse>(`https://api.jup.ag/price/v2?ids=${msg.text},So11111111111111111111111111111111111111112`);
+      const getSolPriceUrl = await axios.get(`https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112`);
+      const solPrice: number = getSolPriceUrl.data.data['So11111111111111111111111111111111111111112'].price;
 
+      const account = await pumpService.getBondingCurveAccount(new PublicKey(msg.text));
+  
+      if (!account) return null;
+
+      const mcapInSOL = account.getMarketCapSOL();
+
+      const mcap = ((Number(mcapInSOL)/ LAMPORTS_PER_SOL) * solPrice);
+
+      
+
+      const price = await axios.get<JupPriceResponse>(`https://api.jup.ag/price/v2?ids=${msg.text},So11111111111111111111111111111111111111112`);
 
       const info: HeliusTokenMetadata = await axios.get(`https://narrative-server-production.up.railway.app/das/${msg.text}`);
 
@@ -234,7 +255,7 @@ bot.on('callback_query', async (callbackQuery: TelegramBot.CallbackQuery) => {
 
 <b>Balance: ${solBalance / LAMPORTS_PER_SOL} SOL</b>
 
-<b>Price: $${priceData.data[msg.text]?.price} -- MC: $${ ((parseFloat(priceData.data[msg.text]?.price) * info.data.token_info.supply) / 1000000).toFixed(2)}</b>      
+<b>Price: $${priceData.data[msg.text]?.price} -- MC: $${mcap.toFixed(2)}</b>      
       `;
   
       await bot.sendMessage(chatId, message, {
