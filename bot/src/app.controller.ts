@@ -12,20 +12,21 @@ import axios from 'axios';
 import { getMarketFromDexscreener } from 'logic/utils/dexscreener';
 import { preBondingMarketInfo } from 'logic/utils/preBondingMarketInfo';
 import { getTokenInfo } from 'logic/utils/getTokenInfo';
+import { getMint } from '@solana/spl-token';
 
 @Controller()
 export class AppController {
   private vaultService: VaultService;
   private pumpService: PumpFunSDK;
-
+  private connection: Connection;
   constructor(
     private readonly appService: AppService, 
     private readonly configService: ConfigService
   ) {
-    const connection = new Connection(process.env.HELIUS_RPC_URL)
+    this.connection = new Connection(process.env.HELIUS_RPC_URL)
     let wallet = new NodeWallet(Keypair.generate());
     
-    const provider = new AnchorProvider(connection, wallet, {
+    const provider = new AnchorProvider(this.connection, wallet, {
       commitment: "finalized",
       });
       
@@ -35,7 +36,7 @@ export class AppController {
 
   @Get()
   async getHello(): Promise<any> {
-    const mm = await getTokenInfo(this.pumpService, '3uXBAmJDoCR1J48t52HmnDBuW8uFcyMkFzvreiogksF2');
+    const mm = await getMint(this.connection, new PublicKey('CsaajQocJQsAL9a68dwm8WMTAHUY48v8oz848edAzqEf'));
     return mm
   }
 

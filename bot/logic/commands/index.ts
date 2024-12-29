@@ -10,6 +10,7 @@ import NodeWallet from "@coral-xyz/anchor/dist/cjs/nodewallet";
 import { UserRepository } from "service/user.repository";
 import { sell } from "./sell";
 import axios from "axios";
+import { connection } from "mongoose";
 
 const activeTokens = new Map<number, { id: string, balance: number, tokenData: any }>();
 
@@ -90,7 +91,7 @@ export class Command {
         // buy(userWallet, this.pumpDotFunSDK, mint, user).then((result) => {console.log(result)})
   }
 
-  async sell(bot: TelegramBot, chatId: TelegramBot.Chat["id"], callbackQueryId: TelegramBot.CallbackQuery["id"], user: number) {
+  async sell(bot: TelegramBot, chatId: TelegramBot.Chat["id"], callbackQueryId: TelegramBot.CallbackQuery["id"], connection: Connection, user: number) {
     try {
         await bot.answerCallbackQuery(callbackQueryId);
     } catch (callbackError: any) {
@@ -170,7 +171,7 @@ export class Command {
             try {
 
                 const balanceToSell = activeToken.balance * (percentage / 100);
-                await sell(bot, chatId, balanceToSell, this.pumpDotFunSDK, new PublicKey(activeToken.id), user)
+                await sell(bot, chatId, balanceToSell, this.pumpDotFunSDK, connection, new PublicKey(activeToken.id), user)
                 await bot.sendMessage(chatId, `✅ Sold  ${percentage}% of your tokens`);
             } catch (error) {
                 await bot.sendMessage(chatId, `❌ Failed to place sell order: ${error.message}`);
@@ -192,6 +193,7 @@ export class Command {
     bot: TelegramBot,
     chatId: TelegramBot.Chat["id"],
     callbackQueryId: TelegramBot.CallbackQuery["id"],
+    connection: Connection,
     user: number,
     tokenAddress: string
   ) {
@@ -222,7 +224,7 @@ export class Command {
       let mint = new PublicKey(tokenAddress);
       
       // Attempt to execute buy
-      const result = await buy(bot, chatId, this.pumpDotFunSDK, mint, user);
+      const result = await buy(bot, chatId, connection, this.pumpDotFunSDK, mint, user);
       console.log(result);
       
       // Send success message to user

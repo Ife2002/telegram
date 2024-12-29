@@ -4,10 +4,11 @@ import { API_URLS, getATAAddress } from '@raydium-io/raydium-sdk-v2';
 import axios from 'axios';
 import { bs58 } from '@coral-xyz/anchor/dist/cjs/utils/bytes';
 import { PriorityFeeResponse, SwapComputeResponse, SwapParams, SwapResult, SwapTransactionResponse } from './types';
+import TelegramBot from 'node-telegram-bot-api';
 
 
 
-export async function swap({
+export async function swap(bot: TelegramBot, chatId: TelegramBot.Chat["id"], {
   connection,
   owner,
   inputMint,
@@ -16,9 +17,10 @@ export async function swap({
   slippage,
   inputTokenAccount,
   outputTokenAccount,
-  txVersion = 'LEGACY'
+  txVersion = 'V0'
 }: SwapParams): Promise<SwapResult> {
   try {
+
     // Check if input/output is SOL
     const isInputSol = inputMint === NATIVE_MINT.toBase58();
     const isOutputSol = outputMint === NATIVE_MINT.toBase58();
@@ -38,6 +40,7 @@ export async function swap({
       `slippageBps=${slippage * 100}&` +
       `txVersion=${txVersion}`
     );
+
 
     // 3. Get or create token accounts if not provided
     let inputTokenAcc = inputTokenAccount;
@@ -102,6 +105,7 @@ export async function swap({
         );
         
         console.log(`Transaction confirmed, txId: ${txId}`);
+        bot.sendMessage(chatId, `Transaction confirmed, https://solscan.io/tx/${txId}`)
         signatures.push(txId);
       }
     } else {
@@ -119,6 +123,7 @@ export async function swap({
         });
 
         console.log(`Transaction sent, txId: ${txId}`);
+        bot.sendMessage(chatId, `Transaction confirmed, https://solscan.io/tx/${txId}`)
         
         await connection.confirmTransaction(
           {
