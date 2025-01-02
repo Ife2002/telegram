@@ -42,6 +42,7 @@ import {
   import { createNozomiConnection, sendTx as sendTxWithNozomi } from "./nozomi";
   import TelegramBot from "node-telegram-bot-api";
   import { PumpFun, IDL } from "./IDL";
+  import { MessagePlatform } from "./adapter"
 
   
   const PROGRAM_ID = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
@@ -71,8 +72,8 @@ import {
     }
   
     async createAndBuy(
-      bot: TelegramBot,
-      chatId: TelegramBot.Chat["id"],
+      platform: MessagePlatform,
+      chatId: string | number,
       creator: Keypair,
       mint: Keypair,
       createTokenMetadata: CreateTokenMetadata,
@@ -114,7 +115,7 @@ import {
       }
   
       let createResults = await sendTx(
-        bot,
+        platform,
         chatId,
         this.connection,
         newTx,
@@ -128,8 +129,8 @@ import {
     }
   
     async buy(
-      bot: TelegramBot,
-      chatId: TelegramBot.Chat["id"],
+      platform: MessagePlatform,
+      chatId: string | number,
       buyer: Keypair,
       mint: PublicKey,
       buyAmountSol: bigint,
@@ -139,7 +140,6 @@ import {
       finality: Finality = DEFAULT_FINALITY
     ): Promise<TransactionResult> {
 
-      
       let buyTx = await this.getBuyInstructionsBySolAmount(
         buyer.publicKey,
         mint,
@@ -149,7 +149,7 @@ import {
       );
   
       let buyResults = await sendTx(
-        bot,
+        platform,
         chatId,
         this.connection,
         buyTx,
@@ -163,8 +163,8 @@ import {
     }
   
     async sell(
-      bot: TelegramBot,
-      chatId: TelegramBot.Chat["id"],
+      platform: MessagePlatform,
+      chatId: string | number,
       seller: Keypair,
       mint: PublicKey,
       sellTokenAmount: bigint,
@@ -182,7 +182,7 @@ import {
       );
   
       let sellResults = await sendTx(
-        bot,
+        platform,
         chatId,
         this.connection,
         sellTx,

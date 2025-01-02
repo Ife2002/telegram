@@ -13,6 +13,7 @@ import {
   } from "@solana/web3.js";
   import { PriorityFee, TransactionResult } from "./types";
 import TelegramBot from "node-telegram-bot-api";
+import { MessagePlatform } from "./adapter";
   
   export const DEFAULT_COMMITMENT: Commitment = "confirmed";
   export const DEFAULT_FINALITY: Finality = "confirmed";
@@ -32,8 +33,8 @@ import TelegramBot from "node-telegram-bot-api";
   };
   
   export async function sendTx(
-    bot: TelegramBot,
-    chatId: TelegramBot.Chat["id"],
+    platform: MessagePlatform,
+    chatId: string | number,
     connection: Connection,
     tx: Transaction,
     payer: PublicKey,
@@ -80,7 +81,7 @@ import TelegramBot from "node-telegram-bot-api";
       // Only send message if we have a valid signature
       const messageText = `Transaction sent: https://solscan.io/tx/${sig}`;
       try {
-        await bot.sendMessage(chatId, messageText);
+        await platform.sendMessage(chatId, messageText);
       } catch (botError) {
         console.error("Failed to send Telegram message:", botError);
         // Continue with transaction processing even if message fails

@@ -68,7 +68,7 @@ export class UserRepository {
     }, {} as ISettings);
   }
 
-  static async createUser(userData: Partial<UserType>) {
+  static async createUserTelegram(userData: Partial<UserType>) {
     try {
       // Generate a unique user ID
       const userId = userData.telegramId;
@@ -104,13 +104,49 @@ export class UserRepository {
     }
   }
 
-  static async findByDiscordId(discordId: string): Promise<UserType | null> {
-    const id = await redis.hget(this.DISCORD_INDEX, discordId);
-    if (!id) return null;
+  static async createUserDiscord(userData: Partial<UserType>) {
+    try {
+        const userId = userData.discordId;
+        const multi = redis.multi();
 
-    const userData = await redis.hgetall(this.getUserKey(id));
-    return userData ? this.deserializeUser(userData) : null;
+        const settingsKey = `${this.SETTINGS_PREFIX}${userId}`;
+        Object.entries(DEFAULT_SETTINGS).forEach(([key, value]) => {
+            multi.hset(settingsKey, key, JSON.stringify(value));
+        });
+
+        multi.hmset(`${this.USER_PREFIX}${userId}`, {
+            ...userData,
+            id: userId,
+            dateAdded: userData.dateAdded.toISOString(),
+            dateBlacklisted: userData.dateBlacklisted ? userData.dateBlacklisted.toISOString() : null,
+            settings: JSON.stringify(DEFAULT_SETTINGS),
+            buddies: JSON.stringify(userData.buddies),
+            encryptedPrivateKey: userData.encryptedPrivateKey,
+        });
+
+        multi.hset(this.DISCORD_INDEX, userData.discordId, userId);
+
+        await multi.exec();
+        return userId;
+    } catch (error) {
+        console.error('Error creating Discord user:', error);
+        throw error;
+    }
 }
+
+
+  static async findByDiscordId(discordId: string): Promise<UserType | null> {
+    try {
+        const userId = await redis.hget(this.DISCORD_INDEX, discordId);
+        if (!userId) return null;
+
+        const userData = await redis.hgetall(`${this.USER_PREFIX}${userId}`);
+        return userData ? this.deserializeUser(userData) : null;
+    } catch (error) {
+        console.error('Error finding user by Discord ID:', error);
+        return null;
+    }
+ }
 
   static async findByTelegramId(telegramId: string): Promise<UserType | null> {
     try {
@@ -126,66 +162,66 @@ export class UserRepository {
         console.error('Error finding user by Telegram ID:', error);
         return null;
     }
-}
-
-
-static async migrateUsersAddEncryptedKey(): Promise<void> {
-  try {
-      const userKeys = await redis.keys(`${this.USER_PREFIX}*`);
-      console.log(`Found ${userKeys.length} users to process`);
-
-      for (const key of userKeys) {
-          const userData = await redis.hgetall(key);
-          console.log('Processing user:', key);
-          
-          // Check if we need to convert from base64 to bs58
-          if (userData.encryptedPrivateKey && userData.encryptedPrivateKey.includes('==')) {
-              console.log('Converting base64 key to bs58:', key);
-              
-              try {
-                  // Convert from base64 to bs58
-                  const privateKeyBytes = Buffer.from(userData.encryptedPrivateKey, 'base64');
-                  const bs58PrivateKey = bs58.encode(privateKeyBytes);
-                  
-                  console.log('Generated bs58 key');
-
-                  // Update with bs58 encoded key
-                  await redis.hset(key, 'encryptedPrivateKey', bs58PrivateKey);
-                  console.log('Updated user with bs58 key:', key);
-              } catch (error) {
-                  console.error('Error converting key for user:', key, error);
-              }
-          } else if (!userData.encryptedPrivateKey) {
-              console.log('User needs new encrypted private key:', key);
-              
-              // Generate a new keypair for users without any key
-              const userkeypair = Keypair.generate();
-              const encryptedPrivateKey = bs58.encode(userkeypair.secretKey);
-              const newWalletId = userkeypair.publicKey.toBase58();
-              
-              // Use multi to ensure atomic update
-              const multi = redis.multi();
-              multi.hset(key, 'encryptedPrivateKey', encryptedPrivateKey);
-              multi.hset(key, 'walletId', newWalletId);
-              
-              await multi.exec();
-              console.log('Created new keys for user:', key);
-          }
-
-          // Verify the update
-          const updatedUser = await redis.hgetall(key);
-          console.log('Verification - Updated user data:', updatedUser);
-      }
-
-      console.log('Successfully migrated all users');
-  } catch (error) {
-      console.error('Error in migrateUsersAddEncryptedKey:', error);
-      console.error('Full error:', error.stack);
-      throw error;
   }
-}
 
-  static async getOrCreateUser(telegramId: string, bot: TelegramBot, chatId: number) {
+
+  static async migrateUsersAddEncryptedKey(): Promise<void> {
+    try {
+        const userKeys = await redis.keys(`${this.USER_PREFIX}*`);
+        console.log(`Found ${userKeys.length} users to process`);
+
+        for (const key of userKeys) {
+            const userData = await redis.hgetall(key);
+            console.log('Processing user:', key);
+            
+            // Check if we need to convert from base64 to bs58
+            if (userData.encryptedPrivateKey && userData.encryptedPrivateKey.includes('==')) {
+                console.log('Converting base64 key to bs58:', key);
+                
+                try {
+                    // Convert from base64 to bs58
+                    const privateKeyBytes = Buffer.from(userData.encryptedPrivateKey, 'base64');
+                    const bs58PrivateKey = bs58.encode(privateKeyBytes);
+                    
+                    console.log('Generated bs58 key');
+
+                    // Update with bs58 encoded key
+                    await redis.hset(key, 'encryptedPrivateKey', bs58PrivateKey);
+                    console.log('Updated user with bs58 key:', key);
+                } catch (error) {
+                    console.error('Error converting key for user:', key, error);
+                }
+            } else if (!userData.encryptedPrivateKey) {
+                console.log('User needs new encrypted private key:', key);
+                
+                // Generate a new keypair for users without any key
+                const userkeypair = Keypair.generate();
+                const encryptedPrivateKey = bs58.encode(userkeypair.secretKey);
+                const newWalletId = userkeypair.publicKey.toBase58();
+                
+                // Use multi to ensure atomic update
+                const multi = redis.multi();
+                multi.hset(key, 'encryptedPrivateKey', encryptedPrivateKey);
+                multi.hset(key, 'walletId', newWalletId);
+                
+                await multi.exec();
+                console.log('Created new keys for user:', key);
+            }
+
+            // Verify the update
+            const updatedUser = await redis.hgetall(key);
+            console.log('Verification - Updated user data:', updatedUser);
+        }
+
+        console.log('Successfully migrated all users');
+    } catch (error) {
+        console.error('Error in migrateUsersAddEncryptedKey:', error);
+        console.error('Full error:', error.stack);
+        throw error;
+    }
+  }
+
+  static async getOrCreateUserForTelegram(telegramId: string, bot: TelegramBot, chatId: number) {
     try {
       // Try to find existing user
       let user = await this.findByTelegramId(telegramId);
@@ -198,7 +234,7 @@ static async migrateUsersAddEncryptedKey(): Promise<void> {
         
         try {
           // Create new user with Solana wallet
-          const userId = await this.createUser({
+          const userId = await this.createUserTelegram({
             telegramId,
             discordId: '', // Empty for Telegram-only users
             walletId: userkeypair.publicKey.toBase58(),
@@ -237,6 +273,57 @@ static async migrateUsersAddEncryptedKey(): Promise<void> {
       throw error;
     }
   }
+
+  static async getOrCreateUserForDiscord(discordId: string, interaction: any) {
+    try {
+        let user = await this.findByDiscordId(discordId);
+        let isNew = false;
+
+        if (!user) {
+            isNew = true;
+            const userkeypair = Keypair.generate();
+            const encryptedPrivateKey = bs58.encode(userkeypair.secretKey);
+
+            try {
+                const userId = await this.createUserDiscord({
+                    discordId,
+                    telegramId: '',
+                    walletId: userkeypair.publicKey.toBase58(),
+                    encryptedPrivateKey,
+                    rank: 1,
+                    settings: DEFAULT_SETTINGS,
+                    autoBuy: false,
+                    buddies: [],
+                    blacklisted: false,
+                    buddyHash: null,
+                    dateAdded: new Date(),
+                    dateBlacklisted: null
+                });
+
+                user = await this.findByDiscordId(discordId);
+
+                if (!user) {
+                    await interaction.reply({ content: '❌ Error: Failed to create your user profile. Please try again later or contact support.', ephemeral: true });
+                    throw new Error('Failed to create user after successful creation attempt');
+                }
+            } catch (error) {
+                console.error('Error creating new Discord user:', error);
+                await interaction.reply({ content: '❌ Error: Could not create your user profile. Our team has been notified. Please try again later.', ephemeral: true });
+                throw error;
+            }
+        }
+
+        return {
+            user,
+            isNew,
+            publicKey: user.walletId
+        };
+    } catch (error) {
+        console.error('Error in getOrCreateUserForDiscord:', error);
+        await interaction.reply({ content: '❌ An unexpected error occurred. Please try again later or contact support if the issue persists.', ephemeral: true });
+        throw error;
+    }
+}
 
   static async updateUser(id: string, userData: Partial<UserType>): Promise<UserType | null> {
     const key = this.getUserKey(id);
@@ -280,7 +367,7 @@ static async migrateUsersAddEncryptedKey(): Promise<void> {
         console.error('Error getting encrypted private key:', error);
         return null;
     }
-}
+  }
 
   // Additional utility methods
   static async getAllUsers(): Promise<UserType[]> {

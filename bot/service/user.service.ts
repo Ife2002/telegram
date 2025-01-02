@@ -26,7 +26,7 @@ export class UserService {
     
   }
 
-    async getUserByTelegramId(id: string): Promise<UserType> {
+  async getUserByTelegramId(id: string): Promise<UserType> {
       try {
         let user = await User.findOne({ telegramId: id }).populate('wallet')
         if (user) {
@@ -44,9 +44,9 @@ export class UserService {
       } catch(err) {
         console.log(err)
       }
-    }
+  }
     
-    async getUserWalletByTelegramId(id: string): Promise<WalletType> {
+  async getUserWalletByTelegramId(id: string): Promise<WalletType> {
       try {
         const user = await User
           .findOne({ telegramId: id })

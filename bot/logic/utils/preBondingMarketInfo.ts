@@ -8,6 +8,7 @@ export async function preBondingMarketInfo(pumpService: PumpFunSDK, tokenAddress
       const getSolPriceUrl = await axios.get(`https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112`);
       const solPrice: number = getSolPriceUrl.data.data['So11111111111111111111111111111111111111112'].price;
 
+
       const account = await pumpService.getBondingCurveAccount(new PublicKey(tokenAddress));
 
       if (!account) return null;

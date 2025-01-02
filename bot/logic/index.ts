@@ -221,7 +221,7 @@ bot.on('callback_query', async (callbackQuery: TelegramBot.CallbackQuery) => {
 
       const tokenInfo = await getTokenInfo(pumpService, msg?.text);
 
-      const { publicKey } = await UserRepository.getOrCreateUser(msg.from.id.toString(), bot, chatId);
+      const { publicKey } = await UserRepository.getOrCreateUserForTelegram(msg.from.id.toString(), bot, chatId);
 
       const solBalance = await connection.getBalance(new PublicKey(publicKey));
 
@@ -281,7 +281,7 @@ bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
 
-    const { user, isNew, publicKey } = await UserRepository.getOrCreateUser(userId.toString(), bot, chatId);
+    const { user, isNew, publicKey } = await UserRepository.getOrCreateUserForTelegram(userId.toString(), bot, chatId);
 
     const solBalance = await connection.getBalance(new PublicKey(publicKey));
 

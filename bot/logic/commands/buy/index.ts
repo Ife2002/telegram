@@ -8,6 +8,7 @@ import TelegramBot from "node-telegram-bot-api";
 import { SwapResult } from "@raydium-io/raydium-sdk-v2";
 import { getMint, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token"
 import { getSmartMint } from "logic/utils/getSmartMint";
+import { TelegramAdapter } from "lib/utils";
 
 const SLIPPAGE_BASIS_POINTS = 3000n;
 // call a service
@@ -33,6 +34,9 @@ export async function buy(
       throw new Error('User wallet not found');
     }
 
+    // Instance for if this is the telegram or discord since they share the same core
+    const telegramPlatform = new TelegramAdapter(bot);
+
     // Create keypair from encrypted private key
     const userWallet = Keypair.fromSecretKey(bs58.decode(encryptedPrivateKey));
 
@@ -50,7 +54,7 @@ export async function buy(
       // Pre-bonding phase - use Pump
       await bot.sendMessage(chatId, "Executing buy - (pre-bonding phase)...");
       return await sdk.buy(
-        bot,
+        telegramPlatform,
         chatId,
         userWallet,
         mint,
