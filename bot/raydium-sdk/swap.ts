@@ -5,10 +5,11 @@ import axios from 'axios';
 import { bs58 } from '@coral-xyz/anchor/dist/cjs/utils/bytes';
 import { PriorityFeeResponse, SwapComputeResponse, SwapParams, SwapResult, SwapTransactionResponse } from './types';
 import TelegramBot from 'node-telegram-bot-api';
+import { MessagePlatform } from 'lib/utils';
 
 
 
-export async function swap(bot: TelegramBot, chatId: TelegramBot.Chat["id"], {
+export async function swap(platform: MessagePlatform, chatId: string | number, {
   connection,
   owner,
   inputMint,
@@ -105,7 +106,7 @@ export async function swap(bot: TelegramBot, chatId: TelegramBot.Chat["id"], {
         );
         
         console.log(`Transaction confirmed, txId: ${txId}`);
-        bot.sendMessage(chatId, `Transaction confirmed, https://solscan.io/tx/${txId}`)
+        platform.sendMessage(chatId, `Transaction confirmed, https://solscan.io/tx/${txId}`)
         signatures.push(txId);
       }
     } else {
@@ -123,7 +124,7 @@ export async function swap(bot: TelegramBot, chatId: TelegramBot.Chat["id"], {
         });
 
         console.log(`Transaction sent, txId: ${txId}`);
-        bot.sendMessage(chatId, `Transaction confirmed, https://solscan.io/tx/${txId}`)
+        platform.sendMessage(chatId, `Transaction confirmed, https://solscan.io/tx/${txId}`)
         
         await connection.confirmTransaction(
           {

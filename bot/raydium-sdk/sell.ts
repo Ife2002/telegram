@@ -3,6 +3,7 @@ import { NATIVE_MINT } from '@solana/spl-token';
 import { swap } from "./swap";
 import { side, SwapResult } from "./types";
 import TelegramBot from "node-telegram-bot-api";
+import { MessagePlatform } from "lib/utils";
 
 /**
  * Sell function that executes a swap transaction.
@@ -13,8 +14,8 @@ import TelegramBot from "node-telegram-bot-api";
  * @param {string} payer/owner - The payer address for the transaction.
  * @returns {Promise<void>} - A promise that resolves when the swap transaction is completed.
  */
-export async function sell(bot: TelegramBot, chatId: TelegramBot.Chat["id"], connection: Connection, mint:string, amount:number, owner:Keypair): Promise<SwapResult> {
-  return await swap(bot, chatId, {
+export async function sell(platform: MessagePlatform, chatId: string | number, connection: Connection, mint:string, amount:number, owner:Keypair): Promise<SwapResult> {
+  return await swap(platform, chatId, {
     connection, 
     owner, 
     inputMint: mint, 

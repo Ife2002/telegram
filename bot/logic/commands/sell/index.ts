@@ -5,7 +5,7 @@ import bs58 from 'bs58'
 import { UserRepository } from "service/user.repository";
 import TelegramBot from "node-telegram-bot-api";
 import { toBigIntPrecise } from "logic/utils";
-import { getSmartMint } from "logic/utils/getSmartMint";
+import { getSmartMint } from "../../utils/getSmartMint";
 import { sell as raydiumSell } from "raydium-sdk";
 import { TelegramAdapter } from "lib/utils";
 
@@ -63,7 +63,7 @@ export async function sell(
 
   } else {
     await bot.sendMessage(chatId, "Executing Sell - (post-bonding phase)...");
-     return await raydiumSell(bot, chatId, connection, mint.toBase58(), Number(sellAmountBN) , userWallet)
+     return await raydiumSell(telegramPlatform, chatId, connection, mint.toBase58(), Number(sellAmountBN) , userWallet)
   }
 
   } catch (error) {

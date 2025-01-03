@@ -17,6 +17,7 @@ import { DiscordAdapter } from '../../../lib/utils';
 import bs58 from 'bs58'
 import { TokenMarketData } from 'logic/utils/types';
 import { UserType } from 'types/user.types';
+import { getSmartMint } from '../../../logic/utils/getSmartMint';
 
 const connection = new Connection(process.env.HELIUS_RPC_URL);
         
@@ -27,7 +28,7 @@ const provider = new AnchorProvider(connection, wallet, {
       });
             
 
-const pumpService = new PumpFunSDK(provider)
+export const pumpService = new PumpFunSDK(provider)
 
 
     export const data = new SlashCommandBuilder()
@@ -51,7 +52,7 @@ const pumpService = new PumpFunSDK(provider)
             .addComponents(buyButton);
 
         
-        const tokenInfo = await getTokenInfo(pumpService, tokenAddress)
+       const tokenInfo = await getTokenInfo(pumpService, tokenAddress)
 
         const embed = new EmbedBuilder()
             .setColor('#0099ff')  // You can customize the color
@@ -113,6 +114,13 @@ const pumpService = new PumpFunSDK(provider)
             });
     
             try {
+                const mint = new PublicKey(tokeninfo.tokenAddress)
+                const account = await pumpService.getBondingCurveAccount(mint);
+                const { mintInfo } = await getSmartMint(connection, mint);
+
+                const shouldUsePump = account && !account.complete;
+    
+                if (shouldUsePump) {
                 await pumpService.buy(
                     discordPlatform,
                     interaction.channelId,
@@ -125,7 +133,9 @@ const pumpService = new PumpFunSDK(provider)
                         unitPrice: 300000,
                     }
                 );
-    
+                } else {
+                    // add raydium buy ix here
+                }
                 // Get the last transaction message from the adapter, in this case it is the signature
                 const txMessage = discordPlatform.getLastMessage();
                 
@@ -138,7 +148,7 @@ const pumpService = new PumpFunSDK(provider)
             } catch (buyError) {
                 console.error('Error during purchase:', buyError);
                 await interaction.followUp({
-                    content: 'There was an error processing your purchase. Please try again later.',
+                    content: `There was an error processing your purchase. Reason: ${buyError}`,
                     ephemeral: true
                 });
             }

@@ -7,7 +7,7 @@ import { UserRepository } from "service/user.repository";
 import TelegramBot from "node-telegram-bot-api";
 import { SwapResult } from "@raydium-io/raydium-sdk-v2";
 import { getMint, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token"
-import { getSmartMint } from "logic/utils/getSmartMint";
+import { getSmartMint } from "../../utils/getSmartMint";
 import { TelegramAdapter } from "lib/utils";
 
 const SLIPPAGE_BASIS_POINTS = 3000n;
@@ -68,7 +68,7 @@ export async function buy(
     } else {
       // Post-bonding phase - use Raydium
       await bot.sendMessage(chatId, "Executing buy - (post-bonding phase)...");
-      return await raydiumBuy(bot, chatId, connection, mint.toBase58(), buyPriceFromConfig * Math.pow(10, mintInfo.decimals), userWallet);
+      return await raydiumBuy(telegramPlatform, chatId, connection, mint.toBase58(), buyPriceFromConfig * Math.pow(10, mintInfo.decimals), userWallet);
     }
 
   } catch (error) {
