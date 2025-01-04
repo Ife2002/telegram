@@ -20,6 +20,12 @@ import { AnchorProvider } from '@coral-xyz/anchor';
 import { UserType } from 'types/user.types';
 import axios from 'axios';
 import { getTokenPrice } from '../../../logic/utils/getPrice';
+import { UserRepository } from '../../../service/user.repository';
+import { DiscordAdapter } from '../../../lib/utils';
+import { bs58 } from '@coral-xyz/anchor/dist/cjs/utils/bytes';
+import { toBigIntPrecise } from '../../../logic/utils';
+import { getSmartMint } from '../../../logic/utils/getSmartMint';
+import { sell as raydiumSell } from "../../../raydium-sdk"
 
 
 interface TokenFile {
@@ -111,6 +117,12 @@ interface TokenResponse {
     items: TokenItem[];
 }
 
+interface ActiveToken {
+    id: string;
+    balance: number;
+    tokenData: TokenItem;
+}
+
 let wallet = new NodeWallet(Keypair.generate());
 
 const connection = new Connection(process.env.HELIUS_RPC_URL);
@@ -122,7 +134,9 @@ const provider = new AnchorProvider(connection, wallet, {
 
 export const pumpService = new PumpFunSDK(provider);
 
-const activeTokens = new Map();
+const SLIPPAGE_BASIS_POINTS = 3000n;
+
+const activeTokens = new Map<string, ActiveToken>();
 
 export const data = new SlashCommandBuilder()
     .setName('sell_token')
@@ -252,26 +266,71 @@ export const data = new SlashCommandBuilder()
         
                         const percentage = parseInt(value);
                         await buttonInteraction.deferReply({ ephemeral: true });
+
+
+                        
         
                         try {
-                            const balanceToSell = activeToken.balance * (percentage / 100);
-                            // await sell(
-                            //     interaction, // You'll need to create a Discord adapter similar to your Telegram one
-                            //     interaction.channelId,
-                            //     balanceToSell,
-                            //     pumpService,
-                            //     connection,
-                            //     new PublicKey(activeToken.id),
-                            //     user
-                            // );
-        
-                            await buttonInteraction.editReply({
-                                content: `✅ Successfully sold ${percentage}% of your tokens`
-                            });
+
+                            // Calculate amount based on percentage of user's balance
+                            const balanceToSell = (activeToken.balance * percentage) / 100;
+
+
+                            // Get encrypted private key from your database
+                            const encryptedPrivateKey = await UserRepository.findByDiscordId(user.discordId);
+                            if (!encryptedPrivateKey) {
+                                throw new Error('User wallet not found');
+                            }
+                    
+                            // Create Discord platform adapter
+                            const discordPlatform = new DiscordAdapter(buttonInteraction);
+                    
+                            // Create keypair from encrypted private key
+                            const userWallet = Keypair.fromSecretKey(bs58.decode(user.encryptedPrivateKey));
+                    
+                            // Calculate sell amount in lamports
+                            const sellAmountBN = toBigIntPrecise(balanceToSell);
+                    
+                            // Get bonding curve account
+                            const account = await pumpService.getBondingCurveAccount(new PublicKey(activeToken.id));
+                            const { mintInfo } = await getSmartMint(connection, new PublicKey(activeToken.id));
+                            
+                            const shouldUsePump = account && !account.complete;
+                    
+                            if (shouldUsePump) {
+                                await discordPlatform.sendMessage(interaction.channelId, "Executing Sell - (pre-bonding phase)...");
+                                const tx = await pumpService.sell(
+                                    discordPlatform,
+                                    interaction.channelId,
+                                    userWallet,
+                                    new PublicKey(activeToken.id),
+                                    sellAmountBN,
+                                    SLIPPAGE_BASIS_POINTS,
+                                    {
+                                        unitLimit: 300000,
+                                        unitPrice: 300000,
+                                    }
+                                );
+                                return tx;
+                            } else {
+                                await discordPlatform.sendMessage(interaction.channelId, "Executing Sell - (post-bonding phase)...");
+                                return await raydiumSell(
+                                    discordPlatform,
+                                    interaction.channelId,
+                                    connection,
+                                    activeToken.id,
+                                    Number(sellAmountBN),
+                                    userWallet
+                                );
+                            }
                         } catch (error) {
-                            await buttonInteraction.editReply({
-                                content: `❌ Failed to place sell order: ${error.message}`
-                            });
+                            console.error('Sell transaction failed:', error);
+                            
+                            if (error instanceof Error) {
+                                throw new Error(`Failed to execute sell: ${error.message}`);
+                            } else {
+                                throw new Error('Failed to execute sell: Unknown error occurred');
+                            }
                         }
                     }
                 });
