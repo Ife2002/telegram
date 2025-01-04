@@ -13,6 +13,7 @@ import { getMarketFromDexscreener } from 'logic/utils/dexscreener';
 import { preBondingMarketInfo } from 'logic/utils/preBondingMarketInfo';
 import { getTokenInfo } from 'logic/utils/getTokenInfo';
 import { getMint } from '@solana/spl-token';
+import { getTokenPrice } from 'logic/utils/getPrice';
 
 @Controller()
 export class AppController {
@@ -36,7 +37,7 @@ export class AppController {
 
   @Get()
   async getHello(): Promise<any> {
-    const mm = await getMint(this.connection, new PublicKey('CsaajQocJQsAL9a68dwm8WMTAHUY48v8oz848edAzqEf'));
+    const mm = await getTokenPrice('BU7BuRDw2bvFCw1JqEzXbWH1qrhVk1pXjPhT8ZSppump')
     return mm
   }
 

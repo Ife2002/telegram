@@ -4,7 +4,7 @@ import { Command } from './commands';
 
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import { redis, testRedisConnection } from '../service/config/redis.config'
-import { UserRepository } from 'service/user.repository';
+import { UserRepository } from '../service/user.repository';
 import axios from 'axios';
 import { AnchorProvider } from '@coral-xyz/anchor';
 import NodeWallet from '@coral-xyz/anchor/dist/cjs/nodewallet';
@@ -128,7 +128,15 @@ const token: any = process.env.TELEGRAM || "";
 
 
 
-const bot = new TelegramBot(token, { polling: true });
+const bot = new TelegramBot(token, {
+  polling: {
+      autoStart: true,
+      params: {
+          timeout: 10
+      }
+  }
+});
+
 console.log('Bot instance created');
 
 const connection = new Connection(process.env.HELIUS_RPC_URL);
@@ -140,7 +148,7 @@ let wallet = new NodeWallet(Keypair.generate());
       commitment: "finalized",
       });
 
-const pumpService = new PumpFunSDK(provider)
+export const pumpService = new PumpFunSDK(provider)
 
 bot.on('polling_error', (error) => {
   console.error('Polling error:', error);

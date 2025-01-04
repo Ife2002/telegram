@@ -19,6 +19,7 @@ import NodeWallet from '@coral-xyz/anchor/dist/cjs/nodewallet';
 import { AnchorProvider } from '@coral-xyz/anchor';
 import { UserType } from 'types/user.types';
 import axios from 'axios';
+import { getTokenPrice } from '../../../logic/utils/getPrice';
 
 
 interface TokenFile {
@@ -144,12 +145,14 @@ export const data = new SlashCommandBuilder()
                 // Add fields for each token
                 for (const token of OwnerTokensInfo.items) {
                     const balance = token.token_info?.balance / Math.pow(10, token.token_info?.decimals);
-                    const price = token.token_info.
+                    const price = await getTokenPrice(token.id);
                     const totalValue = balance * price;
+
+                    console.log(totalValue)
         
                     embed.addFields({
                         name: token.content.metadata.name,
-                        value: `Address: \`${token?.id}\`\nBalance: ${balance?.toLocaleString()} ${token.token_info?.symbol}\nPrice: $${price?.toFixed(8)} ${token.token_info?.price_info?.currency}\nTotal Value: $${totalValue?.toFixed(2)}`,
+                        value: `Address: \`${token?.id}\`\nBalance: ${balance?.toLocaleString()} ${token.content.metadata.symbol}\nPrice: $${price} \nTotal Value: $${totalValue}`,
                         inline: false
                     });
                 }

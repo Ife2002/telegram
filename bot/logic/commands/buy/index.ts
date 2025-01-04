@@ -1,14 +1,13 @@
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { PumpFunSDK, TransactionResult } from "pumpdotfun-sdk";
-import { buy as raydiumBuy } from "raydium-sdk";
-import { UserService } from "service/user.service";
+import { buy as raydiumBuy } from "../../../raydium-sdk";
 import bs58 from 'bs58'
-import { UserRepository } from "service/user.repository";
+import { UserRepository } from "../../../service/user.repository";
 import TelegramBot from "node-telegram-bot-api";
 import { SwapResult } from "@raydium-io/raydium-sdk-v2";
 import { getMint, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token"
 import { getSmartMint } from "../../utils/getSmartMint";
-import { TelegramAdapter } from "lib/utils";
+import { TelegramAdapter } from "../../../lib/utils";
 
 const SLIPPAGE_BASIS_POINTS = 3000n;
 // call a service
