@@ -49,7 +49,6 @@ export const pumpService = new PumpFunSDK(provider)
         const tokenAddress = interaction.options.getString('address', true);
 
         const buyPriceFromConfig = await UserRepository.getBuyAmount(user.discordId);
-        console.log(buyPriceFromConfig);
 
         // Create the Buy Now button
         const buyButton = new ButtonBuilder()
