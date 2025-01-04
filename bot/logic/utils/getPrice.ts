@@ -15,16 +15,28 @@ let wallet = new NodeWallet(Keypair.generate());
 
 export const pumpService = new PumpFunSDK(provider)
 
-export async function getTokenPrice(tokenAddress: string): Promise<number> {
-    const isComplete = (await pumpService.getBondingCurveAccount(new PublicKey(tokenAddress))).complete;
+export const getTokenPrice = async (tokenAddress: string) => {
+    try {
+        // First try to get bonding curve account
+        const bondingCurveAccount = await pumpService.getBondingCurveAccount(new PublicKey(tokenAddress));
+        
+        // If no bonding curve account exists, get price directly from Jupiter
+        if (!bondingCurveAccount) {
+            const getSolPriceUrl = await axios.get(`https://api.jup.ag/price/v2?ids=${tokenAddress}`);
+            const token: number = getSolPriceUrl.data.data[tokenAddress].price;
+            return token;
+        }
 
-    if(isComplete) {
-        const getSolPriceUrl = await axios.get(`https://api.jup.ag/price/v2?ids=${tokenAddress}`);
-        const token: number = getSolPriceUrl.data.data[tokenAddress].price;
-        return token
-    } else {
+        // If bonding curve exists but is complete, get price from Jupiter
+        if (bondingCurveAccount.complete) {
+            const getSolPriceUrl = await axios.get(`https://api.jup.ag/price/v2?ids=${tokenAddress}`);
+            const token: number = getSolPriceUrl.data.data[tokenAddress].price;
+            return token;
+        }
+
+        // Otherwise calculate price using bonding curve
         const getSolPriceUrl = await axios.get(`https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112`);
-         const solPrice: number = getSolPriceUrl.data.data['So11111111111111111111111111111111111111112'].price;
+        const solPrice: number = getSolPriceUrl.data.data['So11111111111111111111111111111111111111112'].price;
 
         const mintInfo = await getMint(
             connection,
@@ -32,28 +44,18 @@ export async function getTokenPrice(tokenAddress: string): Promise<number> {
             "confirmed",
             TOKEN_PROGRAM_ID
         );
-       
-        // Get decimals from mint info
-        const TOKEN_DECIMALS = mintInfo.decimals
-        const SOL_DECIMALS = 9
 
-        // One token with dynamic decimals
-        const oneToken = BigInt(10 ** TOKEN_DECIMALS)
-
-        // Fee basis points (usually 100 = 1%)
-        const feeBasisPoints = 100n
-
-        // Get sell price for one token
-        const solForOneToken = (await pumpService.getBondingCurveAccount(new PublicKey(tokenAddress))).getSellPrice(oneToken, feeBasisPoints)
-
-        // Convert from lamports to SOL accounting for decimals
-        const priceInSol = Number(solForOneToken) / LAMPORTS_PER_SOL
-
-        // If you want price formatted in dollars (assuming you have SOL price in USD)
-        const priceInUSD = priceInSol * solPrice
-
+        const TOKEN_DECIMALS = mintInfo.decimals;
+        const oneToken = BigInt(10 ** TOKEN_DECIMALS);
+        const feeBasisPoints = 100n;
+        
+        const solForOneToken = bondingCurveAccount.getSellPrice(oneToken, feeBasisPoints);
+        const priceInSol = Number(solForOneToken) / LAMPORTS_PER_SOL;
+        const priceInUSD = priceInSol * solPrice;
+        
         return Number(priceInUSD.toFixed(mintInfo?.decimals));
+    } catch (error) {
+        console.error('Error getting token price:', error);
+        throw error;
     }
-    
-    
 }

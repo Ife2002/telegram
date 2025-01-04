@@ -11,6 +11,7 @@ import { UserRepository } from "../../service/user.repository";
 import { sell } from "./sell";
 import axios from "axios";
 import { connection } from "mongoose";
+import { getTokenPrice } from "logic/utils/getPrice";
 
 const activeTokens = new Map<number, { id: string, balance: number, tokenData: any }>();
 
@@ -93,36 +94,43 @@ export class Command {
 
   async sell(bot: TelegramBot, chatId: TelegramBot.Chat["id"], callbackQueryId: TelegramBot.CallbackQuery["id"], connection: Connection, user: number) {
     try {
-        await bot.answerCallbackQuery(callbackQueryId);
-    } catch (callbackError: any) {
-        if (callbackError.response?.body?.error_code === 400 && 
-            callbackError.response?.body?.description?.includes('query is too old')) {
-            console.log('Callback query expired, continuing with purchase');
-        } else {
-            throw callbackError;
-        }
-    }
+      await bot.answerCallbackQuery(callbackQueryId);
+  } catch (callbackError: any) {
+      if (callbackError.response?.body?.error_code === 400 && 
+          callbackError.response?.body?.description?.includes('query is too old')) {
+          console.log('Callback query expired, continuing with purchase');
+      } else {
+          throw callbackError;
+      }
+  }
 
-    const { walletId } = await UserRepository.findByTelegramId(user.toString());
-    const getTokensByOwnerUrl = `https://narrative-server-production.up.railway.app/das/fungible/${walletId}`;
-    const getTokensByOwner = await axios.get(getTokensByOwnerUrl);
-    const OwnerTokensInfo = await getTokensByOwner.data;
+  const { walletId } = await UserRepository.findByTelegramId(user.toString());
+  const getTokensByOwnerUrl = `https://narrative-server-production.up.railway.app/das/fungible/${walletId}`;
+  const getTokensByOwner = await axios.get(getTokensByOwnerUrl);
+  const OwnerTokensInfo = await getTokensByOwner.data;
 
-    const message = OwnerTokensInfo.items.map(token => {
-        const balance = token.token_info.balance / Math.pow(10, token.token_info.decimals);
-        const price = token.token_info.price_info.price_per_token;
-        const totalValue = balance * price;
-        
-        return `*Token*: ${token.content.metadata.name}\n\`${token.id}\`
-*Balance:* ${balance.toLocaleString()} ${token.token_info.symbol}
-*Price:* $${price.toFixed(8)} ${token.token_info.price_info.currency}
-*Total Value:* $${totalValue.toFixed(2)}`;
-    }).join('\n\n');
+  // Create message array first
+  let messageArray = [];
+  
+  // Process each token sequentially
+  for (const token of OwnerTokensInfo.items) {
+      const balance = token.token_info.balance / Math.pow(10, token.token_info.decimals);
+      const price = await getTokenPrice(token.id);
+      const totalValue = balance * price;
+      
+      messageArray.push(`*Token*: ${token.content.metadata.name}\n\`${token.id}\`
+*Balance:* ${balance.toLocaleString()} ${token.content.metadata.symbol}
+*Price:* $${price}
+*Total Value:* $${totalValue}`);
+  }
 
-    const sentMessage = await bot.sendMessage(chatId, message, {
-        parse_mode: "Markdown",
-        reply_markup: this.createKeyboard(chatId, OwnerTokensInfo)
-    });
+  // Join messages with double newline
+  const finalMessage = messageArray.join('\n\n');
+
+  const sentMessage = await bot.sendMessage(chatId, finalMessage, {
+      parse_mode: "Markdown",
+      reply_markup: this.createKeyboard(chatId, OwnerTokensInfo)
+  });
 
     // Set up one-time callback handler for this specific message
     const callbackHandler = async (query: TelegramBot.CallbackQuery) => {
