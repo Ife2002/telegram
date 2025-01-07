@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Client, Collection, EmbedBuilder, Events, GatewayIntentBits, Message } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Client, Collection, EmbedBuilder, Events, GatewayIntentBits, Message, Partials } from 'discord.js';
 import { deployCommands } from './deploy-commands';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import { data as tokenCommand, execute as tokenExecute, handleBuyNow, pumpService } from './commands/token/buy';
 import { UserRepository } from '../service/user.repository';
 import { getTokenInfo } from '../logic/utils/getTokenInfo';
+import { Connection, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 
 
 // Extend the Client class to include commands
@@ -18,10 +19,14 @@ export class AvalancheDiscordClient extends Client {
                 GatewayIntentBits.Guilds,
                 GatewayIntentBits.GuildMessages,
                 GatewayIntentBits.MessageContent,
-                GatewayIntentBits.DirectMessages, 
-                GatewayIntentBits.DirectMessageReactions, 
-                GatewayIntentBits.DirectMessageTyping 
-            ]
+                GatewayIntentBits.DirectMessages,
+                GatewayIntentBits.DirectMessageTyping,
+                GatewayIntentBits.GuildMessageReactions,
+                GatewayIntentBits.DirectMessageReactions,
+                GatewayIntentBits.DirectMessageReactions,
+                GatewayIntentBits.GuildPresences,
+            ],
+            partials: [Partials.Channel, Partials.Message, Partials.User]
         });
         this.commands = new Collection();
     }
@@ -54,7 +59,7 @@ for (const folder of commandFolders) {
 }
 
 
-// When the client is ready, run this code (only once)
+// Handle slash commands
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -62,7 +67,6 @@ client.on(Events.InteractionCreate, async interaction => {
     if (!command) return;
 
     try {
-        
         const { user } = await UserRepository.getOrCreateUserForDiscord(
             interaction.user.id, 
             interaction
@@ -80,75 +84,187 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
-// Handle DMs
-client.on(Events.MessageCreate, async message => {
-    // Ignore messages from bots
-    if (message.author.bot) return;
+// client.on('ready', () => {
+//     console.log(`Logged in as ${client.user.tag}!`);
+//     console.log('Enabled intents:', client.options.intents);
+// });
 
-    // Handle DM messages
-    if (message.channel.type === ChannelType.DM) {
-        // Example command handling
-        const args = message.content.trim().split(/ +/);
-        const command = args.shift()?.toLowerCase();
 
-        if (command === '!token') {
-            const tokenAddress = args[0];
-            if (!tokenAddress) {
-                await message.reply('Please provide a token address!');
-                return;
-            }
+client.on(Events.InteractionCreate, async interaction => {
+    if (!interaction.isButton()) return;
 
-            try {
-                // Use your existing token command logic
-                const tokenInfo = await getTokenInfo(pumpService, tokenAddress);
-                
-                const embed = new EmbedBuilder()
-                    .setColor('#0099ff')
-                    .setTitle('Token Information')
-                    .addFields(
-                        { name: 'Token Address', value: `\`${tokenAddress}\`` },
-                        { name: 'Token Name', value: `\`${tokenInfo.name}\`` },
-                        { name: 'Token Symbol', value: `\`${tokenInfo.symbol}\`` },
-                        { name: 'Market Cap', value: `${tokenInfo.mCap?.toFixed(2).toString() || '0'}` },
-                        { name: 'Liquidity', value: `${tokenInfo.liquidity?.toString() || '0'}` },
-                        { name: 'Token Price', value: `${tokenInfo.price?.toString() || '0'}` }
-                    )
-                    .setTimestamp();
+    try {
+        const [action, address] = interaction.customId.split('_');
 
-                const buyButton = new ButtonBuilder()
-                    .setCustomId(`buyNow_${tokenAddress}`)
-                    .setLabel('Buy Now')
-                    .setStyle(ButtonStyle.Primary);
+        const { user } = await UserRepository.getOrCreateUserForDiscord(
+            interaction.user.id,
+            interaction
+        );
 
-                const row = new ActionRowBuilder<ButtonBuilder>()
-                    .addComponents(buyButton);
+        const buyPriceFromConfig = await UserRepository.getBuyAmount(interaction.user.id);
 
-                await message.reply({
-                    embeds: [embed],
-                    components: [row]
-                });
-            } catch (error) {
-                console.error('Error:', error);
-                await message.reply('Error fetching token information!');
-            }
-        }
-
-        // Add help command
-        if (command === '!help') {
-            const helpEmbed = new EmbedBuilder()
-                .setColor('#0099ff')
-                .setTitle('Bot Commands')
-                .setDescription('Here are the available commands:')
-                .addFields(
-                    { name: '!token <address>', value: 'Get information about a token' },
-                    { name: '!help', value: 'Show this help message' }
-                    // Add more commands as needed
+        switch (action) {
+            case 'buyNow':
+                // Get token info first
+                const tokenInfo = await getTokenInfo(pumpService, address);
+                await handleBuyNow(
+                    interaction, 
+                    tokenInfo,
+                    user,
+                    buyPriceFromConfig
                 );
+                console.log(`buying ${tokenInfo.tokenAddress} for ${interaction.user.username} now`)
+                break;
+            case 'setBuyPrice':
+                try {
 
-            await message.reply({ embeds: [helpEmbed] });
+                    await interaction.deferUpdate();
+            
+                    // Send DM to user
+                    const dmChannel = await interaction.user.createDM();
+                    await dmChannel.send("Please enter your desired buy price in SOL (e.g., 0.1)");
+
+                    // Create a message collector for the DM
+                    const collector = dmChannel.createMessageCollector({ 
+                        filter: m => !m.author.bot,
+                        time: 60000, // 1 minute timeout
+                        max: 1 
+                    });
+            
+                    collector.on('collect', async (message) => {
+                        const buyPrice = parseFloat(message.content);
+            
+                        // Validate the input
+                        if (isNaN(buyPrice) || buyPrice <= 0) {
+                            await message.reply('Invalid input. Please enter a valid number greater than 0. Try setting the buy price again.');
+                            return;
+                        }
+            
+                        try {
+                            // Save the buy price
+                            await UserRepository.setUserSetting(interaction.user.id, 'buyAmount', buyPrice);
+                            await message.reply(`✅ Successfully set buy price to ${buyPrice} SOL`);
+                        } catch (error) {
+                            console.error('Error saving buy price:', error);
+                            await message.reply('❌ Failed to save buy price. Please try again.');
+                        }
+                    });
+            
+                    collector.on('end', collected => {
+                        if (collected.size === 0) {
+                            interaction.user.send('Time expired. Please try setting the buy price again.');
+                        }
+                    });
+            
+                } catch (error) {
+                    console.error('Error in setBuyPrice:', error);
+                    if (!interaction.replied) {
+                        await interaction.reply({
+                            content: '❌ Error processing your request',
+                            ephemeral: true
+                        });
+                    }
+                }
+                break;
+        }
+    } catch (error) {
+        console.error('Button interaction error:', error);
+        if (!interaction.replied) {
+            await interaction.reply({ 
+                content: '❌ Error processing your request', 
+                ephemeral: true 
+            });
         }
     }
 });
+
+
+// Handle messages (both DM and server)
+client.on(Events.MessageCreate, async message => {
+    // console.log('Message received:', {
+    //     isDM: message.channel.type === ChannelType.DM,
+    //     channelType: message.channel.type,
+    //     content: message.content.substring(0, 20) + '...',
+    //     authorId: message.author.id
+    // });
+    if (message.author.bot) return;
+
+    const content = message.content.trim();
+    
+    if (content.length >= 32 && content.length <= 44) {
+
+        // console.log('Message received:', {
+        //     isDM: message.channel.isDMBased(),
+        //     channelType: message.channel.type,
+        //     content: message.content,
+        //     authorId: message.author.id
+        // });
+
+        try {
+            // Validate it's a real public key
+            new PublicKey(content);
+            
+            const tokenInfo = await getTokenInfo(pumpService, content);
+            const { publicKey } = await UserRepository.getOrCreateUserForDiscord(
+                message.author.id,
+                message.channelId
+            );
+            
+            const connection = new Connection(process.env.HELIUS_RPC_URL);
+            const solBalance = await connection.getBalance(new PublicKey(publicKey));
+            const buyPriceFromConfig = await UserRepository.getBuyAmount(message.author.id);
+
+            const embed = new EmbedBuilder()
+                .setColor('#0099ff')
+                .setTitle(`🪙 BUY ${tokenInfo.symbol.toUpperCase()} -- (${tokenInfo.name})`)
+                .setDescription(`\`${content}\``)
+                .addFields(
+                    { name: 'Balance', value: `${solBalance / LAMPORTS_PER_SOL} SOL`, inline: true },
+                    { name: 'Price', value: `$${tokenInfo.price}`, inline: true },
+                    { name: 'Market Cap', value: `$${tokenInfo.mCap.toFixed(2)}`, inline: true }
+                );
+
+            const row1 = new ActionRowBuilder<ButtonBuilder>()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`buyNow_${content}`)
+                        .setLabel('🛒 Buy Now')
+                        .setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder()
+                        .setCustomId(`buy_${content}`)
+                        .setLabel('⚡️ Buy At')
+                        .setStyle(ButtonStyle.Primary)
+                );
+
+            const row2 = new ActionRowBuilder<ButtonBuilder>()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('setBuyPrice')
+                        .setLabel(`Set Buy Price - ${buyPriceFromConfig || '0'} SOL`)
+                        .setStyle(ButtonStyle.Secondary)
+                );
+
+                try {
+                    await message.reply({
+                        embeds: [embed],
+                        components: [row1, row2]
+                    });
+                } catch (error) {
+                    console.error('Failed to reply:', error);
+                    // Attempt to send as a new message if reply fails
+                    await message.channel.send({
+                        embeds: [embed],
+                        components: [row1, row2]
+                    });
+                }
+        } catch (error) {
+            console.error('Error:', error);
+            await message.reply('❌ Error fetching token information');
+        }
+    }
+});
+
+// Add this right before your login code:
 
 
 client.login(process.env.DISCORD_TOKEN)

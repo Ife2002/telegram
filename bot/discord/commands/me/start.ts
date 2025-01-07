@@ -9,7 +9,7 @@ import {
 
 export const data = new SlashCommandBuilder()
     .setName('start')
-    .setDescription('Start interacting with the bot in DMs');
+    .setDescription('Start interacting with the Avalanche in DMs');
 
 export async function execute(interaction: ChatInputCommandInteraction) {
     try {
