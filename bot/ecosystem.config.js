@@ -4,18 +4,26 @@ module.exports = {
         name: 'nest-server',
         script: 'npm',
         args: 'run start:server',
+        exec_mode: 'fork',
         autorestart: true,
         watch: false,
-        max_memory_restart: '1G'
+        max_memory_restart: '1G',
+        env: {
+          NODE_ENV: 'development'
+        }
       },
       {
         name: 'discord-bot',
-        cwd: './discord',
-        script: 'ts-node',
-        args: 'index.ts',
+        cwd: './bot/discord',
+        script: 'npx',
+        args: 'ts-node index.ts',
+        exec_mode: 'fork',
         autorestart: true,
         watch: false,
-        max_memory_restart: '1G'
+        max_memory_restart: '1G',
+        env: {
+          NODE_ENV: 'development'
+        }
       }
     ]
   };
