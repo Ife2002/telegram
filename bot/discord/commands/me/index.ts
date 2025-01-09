@@ -33,7 +33,7 @@ async function execute(interaction: ChatInputCommandInteraction, user: UserType)
 
     // Send the message with both copyable address and embed
     const response = await interaction.reply({
-        content: `**Copyable Wallet Address:**\n${user.walletId}`,
+        content: `${user.walletId}`,
         embeds: [embed],
         components: [row],
         fetchReply: true
