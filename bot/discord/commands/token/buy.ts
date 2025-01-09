@@ -451,6 +451,11 @@ export async function handleSellNow(
     sellPercentage: number
 ) {
     try {
+        // First defer the update
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.deferUpdate();
+        }
+
         const discordPlatform = new DiscordAdapter(interaction);
         
         // Get current balance and calculate sell amount
@@ -460,26 +465,30 @@ export async function handleSellNow(
         );
         const accountInfo = await getAccount(connection, tokenAccount);
         const currentBalance = Number(accountInfo.amount);
-
         const mintInfo = await getMint(connection, accountInfo.mint);
-        const sellAmount = (currentBalance * sellPercentage) / 100;
 
-        await interaction.followUp({
-            content: `Processing sale of ${sellAmount / Math.pow(10, mintInfo.decimals)} ${tokeninfo.symbol} (${sellPercentage}%)`,
-            ephemeral: true
+        // Calculate sell amount
+        const sellAmountBN = BigInt(Math.floor((currentBalance * sellPercentage) / 100));
+        
+        console.log('Selling:', {
+            currentBalance,
+            sellPercentage,
+            sellAmount: sellAmountBN.toString()
         });
 
+        await discordPlatform.sendMessage(
+            interaction.channelId,
+            `Processing sale of ${Number(sellAmountBN) / Math.pow(10, mintInfo.decimals)} ${tokeninfo.symbol} (${sellPercentage}%)`
+        );
+
+        let txSuccess = false;
+        let signatures: string[] = [];
+
         try {
-            // Get bonding curve account
             const account = await pumpService.getBondingCurveAccount(
                 new PublicKey(tokeninfo.tokenAddress)
             );
             const shouldUsePump = account && !account.complete;
-
-            let txSuccess = false;
-            let signatures: string[] = [];
-
-            const sellAmountBN = calculateSellAmount(currentBalance, sellPercentage, mintInfo.decimals);
 
             if (shouldUsePump) {
                 await discordPlatform.sendMessage(
@@ -493,91 +502,107 @@ export async function handleSellNow(
                     Keypair.fromSecretKey(bs58.decode(user.encryptedPrivateKey)),
                     new PublicKey(tokeninfo.tokenAddress),
                     sellAmountBN,
-                    3000n, // SLIPPAGE_BASIS_POINTS
+                    3000n,
                     {
                         unitLimit: 300000,
                         unitPrice: 300000,
                     }
                 );
 
-                txSuccess = result.success && !!result.signature;
-                if (result.signature) signatures.push(result.signature);
-
+                // If we have a signature, consider it worth checking
+                if (result.signature) {
+                    signatures.push(result.signature);
+                    txSuccess = true;
+                }
             } else {
                 await discordPlatform.sendMessage(
                     interaction.channelId, 
                     "Executing Sell - (post-bonding phase)..."
                 );
-                
+
                 const result = await raydiumSell(
                     discordPlatform,
                     interaction.channelId,
                     connection,
                     tokeninfo.tokenAddress,
-                    sellAmount,
+                    Number(sellAmountBN),
                     Keypair.fromSecretKey(bs58.decode(user.encryptedPrivateKey))
                 );
 
-                txSuccess = result.signatures.length > 0;
-                signatures = result.signatures;
+                if (result.signatures && result.signatures.length > 0) {
+                    signatures = result.signatures;
+                    txSuccess = true;
+                }
             }
 
-            if (txSuccess && signatures.length > 0) {
+            // Process transaction confirmation
+            if (signatures.length > 0) {
                 const lastSignature = signatures[signatures.length - 1];
+                console.log('Confirming signature:', lastSignature);
+
                 const confirmation = await connection.confirmTransaction(lastSignature, 'processed');
+                console.log('Confirmation result:', confirmation);
 
                 if (confirmation.value.err) {
                     throw new Error(`Transaction failed: ${confirmation.value.err}`);
                 }
 
-                // Get updated balance after sell
+                // Get updated balance
                 const updatedInfo = await getAccount(connection, tokenAccount, "processed");
                 const updatedBalance = Number(updatedInfo.amount) / Math.pow(10, mintInfo.decimals);
 
-                // Create success message embed
+                // Create success embed
                 const embed = new EmbedBuilder()
                     .setColor('#0099ff')
                     .setTitle(`💰 SOLD ${tokeninfo.symbol} -- (${tokeninfo.name})`)
                     .setDescription(`\`${tokeninfo.tokenAddress}\``)
                     .addFields(
                         { name: 'New Balance', value: `${updatedBalance} ${tokeninfo.symbol}`, inline: true },
-                        { name: 'Amount Sold', value: `${sellAmount / Math.pow(10, mintInfo.decimals)} ${tokeninfo.symbol}`, inline: true },
+                        { name: 'Amount Sold', value: `${Number(sellAmountBN) / Math.pow(10, mintInfo.decimals)} ${tokeninfo.symbol}`, inline: true },
                         { name: 'Sale %', value: `${sellPercentage}%`, inline: true }
-                    );
+                    )
+                    .addFields({
+                        name: 'Transaction',
+                        value: `[View on Solscan](https://solscan.io/tx/${lastSignature})`,
+                        inline: false
+                    });
 
-                // Add transaction URL
-                embed.addFields({
-                    name: 'Transaction',
-                    value: `[View on Solscan](https://solscan.io/tx/${lastSignature})`,
-                    inline: false
-                });
-
+                // Create action rows with buttons (using the fixed button code from earlier)
                 const { row1, row2, row3 } = createActionButtons(tokeninfo, lastSignature);
 
                 // Update the message with new balance and transaction info
                 await interaction.editReply({
+                    content: `✅ Successfully sold ${tokeninfo.symbol}!`,
                     embeds: [embed],
-                    components: [row1, row2, row3] // Keep your action buttons
+                    components: [row1, row2, row3],
                 });
 
             } else {
-                throw new Error('Transaction failed or no signature returned');
+                throw new Error('No transaction signature received');
             }
 
         } catch (error) {
             console.error('Sell transaction failed:', error);
-            await interaction.followUp({
-                content: `Failed to execute sell: ${error.message}`,
-                ephemeral: true
-            });
+            await discordPlatform.sendMessage(
+                interaction.channelId,
+                `Failed to execute sell: ${error.message}`
+            );
+            throw error;
         }
 
     } catch (error) {
         console.error('Error in sell operation:', error);
-        await interaction.followUp({
-            content: `Error processing your sell request: ${error.message}`,
-            ephemeral: true
-        });
+        if (!interaction.replied) {
+            await interaction.reply({
+                content: `Error processing your sell request: ${error.message}`,
+                ephemeral: true
+            });
+        } else {
+            await interaction.followUp({
+                content: `Error processing your sell request: ${error.message}`,
+                ephemeral: true
+            });
+        }
     }
 }
 
