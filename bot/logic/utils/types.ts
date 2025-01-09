@@ -7,4 +7,5 @@ export interface TokenMarketData {
     price: number | string;
     supply: null | number;  // Using union type since it can be null
     liquidity: number;
+    imgUrl?: string | null
   }

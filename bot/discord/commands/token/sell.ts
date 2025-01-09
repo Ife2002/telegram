@@ -139,7 +139,7 @@ const SLIPPAGE_BASIS_POINTS = 3000n;
 const activeTokens = new Map<string, ActiveToken>();
 
 export const data = new SlashCommandBuilder()
-    .setName('sell_token')
+    .setName('trade')
     .setDescription('View and sell your tokens');
 
         export async function execute(interaction: ChatInputCommandInteraction, user: UserType) {

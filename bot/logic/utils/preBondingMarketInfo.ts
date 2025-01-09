@@ -31,6 +31,7 @@ export async function preBondingMarketInfo(pumpService: PumpFunSDK, tokenAddress
         price: tokenPrice,
         supply: Number(account.tokenTotalSupply),
         liquidity: Number(account.realSolReserves),
+        imgUrl: info.data.content.links.image,
       }
 
 }

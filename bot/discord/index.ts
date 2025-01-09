@@ -181,24 +181,11 @@ client.on(Events.InteractionCreate, async interaction => {
 
 // Handle messages (both DM and server)
 client.on(Events.MessageCreate, async message => {
-    // console.log('Message received:', {
-    //     isDM: message.channel.type === ChannelType.DM,
-    //     channelType: message.channel.type,
-    //     content: message.content.substring(0, 20) + '...',
-    //     authorId: message.author.id
-    // });
     if (message.author.bot) return;
 
     const content = message.content.trim();
     
     if (content.length >= 32 && content.length <= 44) {
-
-        // console.log('Message received:', {
-        //     isDM: message.channel.isDMBased(),
-        //     channelType: message.channel.type,
-        //     content: message.content,
-        //     authorId: message.author.id
-        // });
 
         try {
             // Validate it's a real public key
