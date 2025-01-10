@@ -206,8 +206,8 @@ client.on(Events.MessageCreate, async message => {
                 .setTitle(`🪙 BUY ${tokenInfo.symbol.toUpperCase()} -- (${tokenInfo.name})`)
                 .setDescription(`\`${content}\``)
                 .addFields(
-                    { name: 'Balance', value: `${solBalance / LAMPORTS_PER_SOL} SOL`, inline: true },
-                    { name: 'Price', value: `$${tokenInfo.price}`, inline: true },
+                    { name: 'Balance', value: `${Number(solBalance / LAMPORTS_PER_SOL).toFixed(4)} SOL`, inline: true },
+                    { name: 'Price', value: `$${Number(tokenInfo.price).toFixed(5)}`, inline: true },
                     { name: 'Market Cap', value: `$${tokenInfo.mCap.toFixed(2)}`, inline: true }
                 );
 
@@ -250,8 +250,6 @@ client.on(Events.MessageCreate, async message => {
         }
     }
 });
-
-// Add this right before your login code:
 
 
 client.login(process.env.DISCORD_TOKEN)

@@ -428,10 +428,11 @@ export async function handleBuyNow(
             const { row1, row2, row3 } = createActionButtons(tokeninfo, lastSignature);
 
             // Send success message
-            const successMessage = await interaction.editReply({
+            const successMessage = await interaction.followUp({
                 content: `✅ Successfully purchased ${tokeninfo.symbol}!`,
                 embeds: [embed],
                 components: [row1, row2, row3],
+                ephemeral: false
             });
 
             // Setup collector for the new buttons
@@ -469,12 +470,6 @@ export async function handleSellNow(
 
         // Calculate sell amount
         const sellAmountBN = BigInt(Math.floor((currentBalance * sellPercentage) / 100));
-        
-        console.log('Selling:', {
-            currentBalance,
-            sellPercentage,
-            sellAmount: sellAmountBN.toString()
-        });
 
         await discordPlatform.sendMessage(
             interaction.channelId,
@@ -571,10 +566,11 @@ export async function handleSellNow(
                 const { row1, row2, row3 } = createActionButtons(tokeninfo, lastSignature);
 
                 // Update the message with new balance and transaction info
-                await interaction.editReply({
+                await interaction.followUp({
                     content: `✅ Successfully sold ${tokeninfo.symbol}!`,
                     embeds: [embed],
                     components: [row1, row2, row3],
+                    ephemeral: false
                 });
 
             } else {
@@ -704,7 +700,7 @@ function createSuccessEmbed(tokeninfo: TokenMarketData, balance: number, signatu
 }
 
 
-function createActionButtons(tokeninfo: TokenMarketData, signature: string) {
+export function createActionButtons(tokeninfo: TokenMarketData, signature: string) {
     const row1 = new ActionRowBuilder<ButtonBuilder>()
                     .addComponents(
                         new ButtonBuilder()

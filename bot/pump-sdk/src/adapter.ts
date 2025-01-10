@@ -34,7 +34,7 @@ export interface MessagePlatform {
         }
         return await this.interaction.followUp({
             content: text,
-            ephemeral: true
+            ephemeral: false
         });
     }
 

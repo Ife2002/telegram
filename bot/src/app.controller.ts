@@ -38,7 +38,8 @@ export class AppController {
   @Get()
   async getHello(): Promise<any> {
     // const mm = await getTokenPrice('BU7BuRDw2bvFCw1JqEzXbWH1qrhVk1pXjPhT8ZSppump')
-    return 'Avalance server'
+    const mm = await getTokenInfo(this.pumpService, 'BU7BuRDw2bvFCw1JqEzXbWH1qrhVk1pXjPhT8ZSppump')
+    return 'Avalanche server'
   }
 
   @Get('listWallets')

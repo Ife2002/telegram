@@ -19,8 +19,7 @@ export async function preBondingMarketInfo(pumpService: PumpFunSDK, tokenAddress
 
       const info: HeliusTokenMetadata = await axios.get(`https://narrative-server-production.up.railway.app/das/${tokenAddress}`);
 
-      const tokenPrice = Number(mcapInSOL / account.tokenTotalSupply) * solPrice
-
+      const tokenPrice = Number(mcapInSOL) / Number(account.tokenTotalSupply) * solPrice
 
       return {
         tokenAddress: tokenAddress,
@@ -33,5 +32,4 @@ export async function preBondingMarketInfo(pumpService: PumpFunSDK, tokenAddress
         liquidity: Number(account.realSolReserves),
         imgUrl: info.data.content.links.image,
       }
-
 }

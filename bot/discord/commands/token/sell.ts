@@ -19,6 +19,7 @@ import NodeWallet from '@coral-xyz/anchor/dist/cjs/nodewallet';
 import { AnchorProvider } from '@coral-xyz/anchor';
 import { UserType } from 'types/user.types';
 import axios from 'axios';
+import { getTokenInfo } from "../../../logic/utils/getTokenInfo";
 import { getTokenPrice } from '../../../logic/utils/getPrice';
 import { UserRepository } from '../../../service/user.repository';
 import { DiscordAdapter } from '../../../lib/utils';
@@ -26,6 +27,8 @@ import { bs58 } from '@coral-xyz/anchor/dist/cjs/utils/bytes';
 import { toBigIntPrecise } from '../../../logic/utils';
 import { getSmartMint } from '../../../logic/utils/getSmartMint';
 import { sell as raydiumSell } from "../../../raydium-sdk"
+import { getAccount, getAssociatedTokenAddress } from '@solana/spl-token';
+import { createActionButtons } from './buy';
 
 
 interface TokenFile {
@@ -162,7 +165,6 @@ export const data = new SlashCommandBuilder()
                     const price = await getTokenPrice(token.id);
                     const totalValue = balance * price;
 
-                    console.log(totalValue)
         
                     embed.addFields({
                         name: token.content.metadata.name,
@@ -265,7 +267,7 @@ export const data = new SlashCommandBuilder()
                         }
         
                         const percentage = parseInt(value);
-                        await buttonInteraction.deferReply({ ephemeral: true });
+                        await buttonInteraction.deferReply({ ephemeral: false });
 
 
                         
@@ -296,10 +298,13 @@ export const data = new SlashCommandBuilder()
                             const { mintInfo } = await getSmartMint(connection, new PublicKey(activeToken.id));
                             
                             const shouldUsePump = account && !account.complete;
+
+                            let txSuccess = false;
+                            let signatures: string[] = [];
                     
                             if (shouldUsePump) {
-                                await discordPlatform.sendMessage(interaction.channelId, "Executing Sell - (pre-bonding phase)...");
-                                const tx = await pumpService.sell(
+                                await discordPlatform.sendMessage(interaction.channelId, `Executing Sell Order for ${activeToken?.tokenData?.content.metadata.name} on Pump`);
+                                const result = await pumpService.sell(
                                     discordPlatform,
                                     interaction.channelId,
                                     userWallet,
@@ -311,10 +316,15 @@ export const data = new SlashCommandBuilder()
                                         unitPrice: 300000,
                                     }
                                 );
-                                return tx;
+
+                                if (result.signature) {
+                                    signatures.push(result.signature);
+                                    txSuccess = true;
+                                }
                             } else {
-                                await discordPlatform.sendMessage(interaction.channelId, "Executing Sell - (post-bonding phase)...");
-                                return await raydiumSell(
+                                await discordPlatform.sendMessage(interaction.channelId, `Executing Sell Order for ${activeToken?.tokenData?.content.metadata.name} on Raydium`);
+
+                               const result = await raydiumSell(
                                     discordPlatform,
                                     interaction.channelId,
                                     connection,
@@ -322,7 +332,69 @@ export const data = new SlashCommandBuilder()
                                     Number(sellAmountBN),
                                     userWallet
                                 );
+
+                                if (result.signatures && result.signatures.length > 0) {
+                                    signatures = result.signatures;
+                                    txSuccess = true;
+                                }
                             }
+
+
+                            //add here
+
+                    if (signatures.length > 0) {
+                        const lastSignature = signatures[signatures.length - 1];
+                        console.log('Confirming signature:', lastSignature);
+        
+                        const confirmation = await connection.confirmTransaction(lastSignature, 'processed');
+                        console.log('Confirmation result:', confirmation);
+        
+                        if (confirmation.value.err) {
+                            throw new Error(`Transaction failed: ${confirmation.value.err}`);
+                        }
+
+                        const tokeninfo = await getTokenInfo(pumpService, activeToken.id);
+
+                        const tokenAccount = await getAssociatedTokenAddress(
+                                    new PublicKey(tokeninfo.tokenAddress),
+                                    new PublicKey(user.walletId)
+                                );
+        
+                        // Get updated balance
+                        const updatedInfo = await getAccount(connection, tokenAccount, "processed");
+                        const updatedBalance = Number(updatedInfo.amount) / Math.pow(10, mintInfo.decimals);
+        
+                        // Create success embed
+                        const embed = new EmbedBuilder()
+                            .setColor('#0099ff')
+                            .setTitle(`💰 SOLD ${activeToken.tokenData.content.metadata.symbol} -- (${activeToken.tokenData.content.metadata.name})`)
+                            .setDescription(`\`${activeToken.tokenData.id}\``)
+                            .addFields(
+                                { name: 'New Balance', value: `${updatedBalance} ${activeToken.tokenData.content.metadata.symbol}`, inline: true },
+                                { name: 'Amount Sold', value: `${Number(sellAmountBN) / Math.pow(10, mintInfo.decimals)} ${activeToken.tokenData.content.metadata.symbol}`, inline: true },
+                                { name: 'Sale %', value: `${percentage}%`, inline: true }
+                            )
+                            .addFields({
+                                name: 'Transaction',
+                                value: `[View on Solscan](https://solscan.io/tx/${lastSignature})`,
+                                inline: false
+                            });
+        
+                        // Create action rows with buttons (using the fixed button code from earlier)
+                        const { row1, row2, row3 } = createActionButtons(tokeninfo, lastSignature);
+        
+                        // Update the message with new balance and transaction info
+                        await interaction.followUp({
+                            content: `✅ Successfully sold ${activeToken.tokenData.content.metadata.symbol}!`,
+                            embeds: [embed],
+                            components: [row1, row2, row3],
+                        });
+        
+                    } else {
+                        throw new Error('No transaction signature received');
+                    }
+
+
                         } catch (error) {
                             console.error('Sell transaction failed:', error);
                             

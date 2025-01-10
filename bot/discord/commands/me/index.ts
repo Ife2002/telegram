@@ -19,8 +19,13 @@ async function execute(interaction: ChatInputCommandInteraction, user: UserType)
         .setLabel('Copy Address')
         .setStyle(ButtonStyle.Secondary);
 
+    const settingButton = new ButtonBuilder()
+        .setCustomId('settings')
+        .setLabel('Settings')
+        .setStyle(ButtonStyle.Primary);
+
     const row = new ActionRowBuilder<ButtonBuilder>()
-        .addComponents(copyButton);
+        .addComponents(copyButton, settingButton);
 
     const embed = new EmbedBuilder()
         .setColor('#0099ff')

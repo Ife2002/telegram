@@ -24,7 +24,7 @@ export async function getTokenInfo(pumpService: PumpFunSDK, tokenAddress: string
     const errors = results
         .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
         .map(result => result.reason.message)
-        .join(', ');
+        .join(',');
 
     throw new Error(`Failed to fetch token info: ${errors}`);
 }

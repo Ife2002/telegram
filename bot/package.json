@@ -11,7 +11,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start:server": "nest start",
     "start:bot": "ts-node discord/index.ts",
-    "start": "concurrently \"npm run start:server\" \"npm run start:discord\"",
+    "start": "npm run start:server",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",

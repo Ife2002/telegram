@@ -68,8 +68,6 @@ import { MessagePlatform } from "./adapter";
         maxRetries: 3
       });
 
-      console.log(`Transaction sent: https://solscan.io/tx/${sig}`)
-
       if (!sig) {
         console.error("No signature returned from transaction");
         return {
