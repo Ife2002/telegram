@@ -339,7 +339,7 @@ async function executeBuyOrder(
             const balance = await connection.getBalance(new PublicKey(user.walletId));
             const balanceInSOL = balance / LAMPORTS_PER_SOL;
             throw new Error(
-                `Insufficient balance. You need ${buyAmount.toFixed(3)} SOL but only have ${balanceInSOL.toFixed(3)} SOL`
+                `Insufficient balance. You need ${buyAmount} SOL but only have ${balanceInSOL.toFixed(5)} SOL`
             );
         }
     const buyAmountLamports = BigInt(buyAmount * LAMPORTS_PER_SOL);

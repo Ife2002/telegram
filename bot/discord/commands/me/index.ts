@@ -56,5 +56,7 @@ async function execute(interaction: ChatInputCommandInteraction, user: UserType)
     });
 }
 
+// setting- buy amount, slippage, nozomi buy,
+
 module.exports = { data, execute };
 
