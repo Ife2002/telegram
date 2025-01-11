@@ -111,32 +111,69 @@ export async function swap(platform: MessagePlatform, chatId: string | number, {
       }
     } else {
       // Handle versioned transactions
+      // Handle versioned transactions
       for (const tx of allTransactions) {
-        const transaction = tx as VersionedTransaction;
-        transaction.sign([owner]);
+        let retryCount = 0;
+        const maxRetries = 3;
         
-        const txId = await connection.sendTransaction(transaction, {
-          skipPreflight: true
-        });
+        while (retryCount < maxRetries) {
+          try {
+            // Get latest blockhash BEFORE signing
+            const { lastValidBlockHeight, blockhash } = await connection.getLatestBlockhash({
+              commitment: 'finalized'
+            });
 
-        const { lastValidBlockHeight, blockhash } = await connection.getLatestBlockhash({
-          commitment: 'finalized'
-        });
+            const transaction = tx as VersionedTransaction;
+            // Set the blockhash on the transaction
+            transaction.message.recentBlockhash = blockhash;
+            transaction.sign([owner]);
 
-        console.log(`Transaction sent, txId: ${txId}`);
-        platform.sendMessage(chatId, `Transaction confirmed, https://solscan.io/tx/${txId}`)
-        
-        await connection.confirmTransaction(
-          {
-            blockhash,
-            lastValidBlockHeight,
-            signature: txId,
-          },
-          'confirmed'
-        );
+            const txId = await connection.sendTransaction(transaction, {
+              skipPreflight: true,
+              maxRetries: 3 // Add retry attempts for sending
+            });
 
-        console.log(`Transaction confirmed`);
-        signatures.push(txId);
+            console.log(`Transaction sent, txId: ${txId}`);
+
+            // Use shorter confirmation timeout and handle errors
+            const confirmation = await connection.confirmTransaction(
+              {
+                blockhash,
+                lastValidBlockHeight,
+                signature: txId,
+              },
+              'confirmed'
+            ).then(
+              result => result,
+              error => {
+                if (error.toString().includes('block height exceeded')) {
+                  throw new Error('Transaction expired');
+                }
+                throw error;
+              }
+            );
+
+            if (confirmation.value.err) {
+              throw new Error(`Transaction failed: ${confirmation.value.err}`);
+            }
+
+            // If we get here, transaction was successful
+            await platform.sendMessage(chatId, `Transaction confirmed, https://solscan.io/tx/${txId}`);
+            signatures.push(txId);
+            break; // Exit retry loop on success
+
+          } catch (error) {
+            console.error(`Attempt ${retryCount + 1} failed:`, error);
+            
+            if (retryCount === maxRetries - 1) {
+              await platform.sendMessage(chatId, error);
+            }
+            
+            // Wait before retrying
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            retryCount++;
+          }
+        }
       }
     }
 
