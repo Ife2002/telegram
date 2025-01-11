@@ -334,14 +334,18 @@ async function executeBuyOrder(
     buyAmount: number
 ) {
 
-    const hasBalance = await hasEnoughBalance(connection, user.walletId, buyAmount);
-        if (!hasBalance) {
-            const balance = await connection.getBalance(new PublicKey(user.walletId));
-            const balanceInSOL = balance / LAMPORTS_PER_SOL;
-            throw new Error(
-                `Insufficient balance. You need ${buyAmount} SOL but only have ${balanceInSOL.toFixed(5)} SOL`
-            );
-        }
+    const { hasBalance, currentBalance } = await hasEnoughBalance(
+        connection, 
+        user.walletId, 
+        buyAmount
+    );
+
+    if (!hasBalance) {
+        throw new Error(
+            `Insufficient balance. You need ${(buyAmount + 0.01)} SOL (including fees) but only have ${currentBalance.toFixed(5)} SOL`
+        );
+    }
+
     const buyAmountLamports = BigInt(buyAmount * LAMPORTS_PER_SOL);
     const mint = new PublicKey(tokenAddress);
     const account = await pumpService.getBondingCurveAccount(mint);
@@ -827,12 +831,25 @@ async function hasEnoughBalance(
     connection: Connection,
     walletId: string,
     requiredAmount: number
-): Promise<boolean> {
+): Promise<{hasBalance: boolean, currentBalance: number}> {
     try {
         const balance = await connection.getBalance(new PublicKey(walletId));
         const balanceInSOL = balance / LAMPORTS_PER_SOL;
-        // Add a small buffer for transaction fees (0.01 SOL) - get tx fees endpoint
-        return balanceInSOL >= (requiredAmount + 0.01);
+        // Convert to same decimal places for comparison
+        const requiredWithBuffer = requiredAmount + 0.01; // Add buffer for fees
+        
+        console.log('Balance check details:', {
+            walletBalance: balanceInSOL,
+            requiredAmount: requiredAmount,
+            requiredWithBuffer: requiredWithBuffer,
+            rawBalance: balance,
+            rawRequired: requiredAmount * LAMPORTS_PER_SOL
+        });
+
+        return {
+            hasBalance: balanceInSOL >= requiredWithBuffer,
+            currentBalance: balanceInSOL
+        };
     } catch (error) {
         console.error('Error checking balance:', error);
         throw new Error('Failed to check wallet balance');
