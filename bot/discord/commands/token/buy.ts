@@ -333,6 +333,15 @@ async function executeBuyOrder(
     tokenAddress: string,
     buyAmount: number
 ) {
+
+    const hasBalance = await hasEnoughBalance(connection, user.walletId, buyAmount);
+        if (!hasBalance) {
+            const balance = await connection.getBalance(new PublicKey(user.walletId));
+            const balanceInSOL = balance / LAMPORTS_PER_SOL;
+            throw new Error(
+                `Insufficient balance. You need ${buyAmount.toFixed(3)} SOL but only have ${balanceInSOL.toFixed(3)} SOL`
+            );
+        }
     const buyAmountLamports = BigInt(buyAmount * LAMPORTS_PER_SOL);
     const mint = new PublicKey(tokenAddress);
     const account = await pumpService.getBondingCurveAccount(mint);
@@ -789,20 +798,44 @@ async function refreshTokenDisplay(
 function handleBuyError(interaction: ButtonInteraction, error: any) {
     console.error('Error in buy operation:', error);
     try {
-        const errorMessage = 'There was an error processing your request. Please try again.';
+        let errorMessage = 'There was an error processing your request. Please try again.';
+        
+        // Check for specific error types
+        if (error.message.includes('Insufficient balance')) {
+            errorMessage = error.message; // Use the formatted balance error message
+        } else if (error.message.includes('block height exceeded')) {
+            errorMessage = 'Transaction timed out. Please try again.';
+        }
+
+        const options = {
+            content: errorMessage,
+            flags: 64 // Ephemeral flag
+        };
+
         if (!interaction.replied && !interaction.deferred) {
-            interaction.reply({
-                content: errorMessage,
-                ephemeral: true
-            });
+            interaction.reply(options);
         } else {
-            interaction.followUp({
-                content: errorMessage,
-                ephemeral: true
-            });
+            interaction.followUp(options);
         }
     } catch (followUpError) {
         console.error('Failed to send error message:', followUpError);
+    }
+}
+
+//helper function to check balance
+async function hasEnoughBalance(
+    connection: Connection,
+    walletId: string,
+    requiredAmount: number
+): Promise<boolean> {
+    try {
+        const balance = await connection.getBalance(new PublicKey(walletId));
+        const balanceInSOL = balance / LAMPORTS_PER_SOL;
+        // Add a small buffer for transaction fees (0.01 SOL) - get tx fees endpoint
+        return balanceInSOL >= (requiredAmount + 0.01);
+    } catch (error) {
+        console.error('Error checking balance:', error);
+        throw new Error('Failed to check wallet balance');
     }
 }
  
