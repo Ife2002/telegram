@@ -833,21 +833,22 @@ async function hasEnoughBalance(
     requiredAmount: number
 ): Promise<{hasBalance: boolean, currentBalance: number}> {
     try {
+        const MAX_TRANSACTION_FEE = 0.000005; // Maximum Solana tx fee in SOL
         const balance = await connection.getBalance(new PublicKey(walletId));
         const balanceInSOL = balance / LAMPORTS_PER_SOL;
-        // Convert to same decimal places for comparison
-        const requiredWithBuffer = requiredAmount + 0.01; // Add buffer for fees
+        const requiredWithFee = requiredAmount + MAX_TRANSACTION_FEE;
         
         console.log('Balance check details:', {
             walletBalance: balanceInSOL,
             requiredAmount: requiredAmount,
-            requiredWithBuffer: requiredWithBuffer,
+            requiredWithFee,
+            maxTxFee: MAX_TRANSACTION_FEE,
             rawBalance: balance,
             rawRequired: requiredAmount * LAMPORTS_PER_SOL
         });
 
         return {
-            hasBalance: balanceInSOL >= requiredWithBuffer,
+            hasBalance: balanceInSOL >= requiredWithFee,
             currentBalance: balanceInSOL
         };
     } catch (error) {
