@@ -93,13 +93,14 @@ export async function getMarketFromDexscreener(tokenAddress: string): Promise<To
 
         return {
             tokenAddress: tokenAddress,
-            name: response.data?.pairs[0]?.baseToken.name,
-            symbol: response.data.pairs[0].baseToken.symbol,
+            name: response.data?.pairs[0]?.baseToken?.name,
+            symbol: response.data?.pairs[0]?.baseToken?.symbol,
             solPrice: 0,
-            mCap: response.data.pairs[0].marketCap,
-            price: response.data.pairs[0].priceUsd,
+            mCap: response.data?.pairs[0]?.marketCap,
+            price: response.data?.pairs[0]?.priceUsd,
             supply: null,
-            liquidity: response.data.pairs[0].liquidity.usd
+            liquidity: response.data?.pairs[0]?.liquidity?.usd,
+            imgUrl: response.data?.pairs[0]?.info?.imageUrl,
         };
     } catch (error) {
         if (axios.isAxiosError(error)) {

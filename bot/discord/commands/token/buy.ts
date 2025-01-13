@@ -37,179 +37,7 @@ const provider = new AnchorProvider(connection, wallet, {
 
 export const pumpService = new PumpFunSDK(provider);
 
-export const data = new SlashCommandBuilder()
-    .setName('buy_token')
-    .setDescription('View and buy tokens')
-    .addStringOption(option =>
-        option.setName('address')
-            .setDescription('The token address')
-            .setRequired(true));
 
-export async function execute(interaction: ChatInputCommandInteraction, user: UserType) {
-    const tokenAddress = interaction.options.getString('address', true);
-    const buyPriceFromConfig = await UserRepository.getBuyAmount(user.discordId);
-    const tokenInfo = await getTokenInfo(pumpService, tokenAddress);
-
-    // Create initial embed
-    const embed = new EmbedBuilder()
-        .setColor('#0099ff')
-        .setTitle('Token Information')
-        .addFields(
-            { name: 'Token Address', value: `\`${tokenAddress}\`` },
-            { name: 'Token Name', value: `\`${tokenInfo.name}\`` },
-            { name: 'Token Symbol', value: `\`${tokenInfo.symbol}\`` },
-            { name: 'Market Cap', value: `${tokenInfo.mCap?.toFixed(2).toString() || '0'}` },
-            { name: 'Liquidity', value: `${tokenInfo.liquidity?.toString() || '0'}` },
-            { name: 'Token Price', value: `${tokenInfo.price?.toString() || '0'}` }
-        )
-        .setTimestamp();
-
-    // Initial buttons
-    const buyButton = new ButtonBuilder()
-        .setCustomId(`buyNow_${tokenAddress}`)
-        .setLabel('Buy Now')
-        .setStyle(ButtonStyle.Primary);
-
-    const buyConfigButton = new ButtonBuilder()
-        .setCustomId(`buy_setting_config`)
-        .setLabel('Set Buy Price')
-        .setStyle(ButtonStyle.Secondary);
-
-    const row = new ActionRowBuilder<ButtonBuilder>()
-        .addComponents(buyButton)
-        .addComponents(buyConfigButton);
-
-    // Send initial message
-    const response = await interaction.reply({
-        content: `**Copyable Token Address:**\n${tokenAddress}`,
-        embeds: [embed],
-        components: [row],
-        fetchReply: true
-    });
-
-    // Create button collector
-    const collector = response.createMessageComponentCollector({
-        componentType: ComponentType.Button,
-        time: 3_600_000
-    });
-
-    collector.on('collect', async (buttonInteraction: ButtonInteraction) => {
-        console.log('Button clicked!');
-        console.log('CustomId:', buttonInteraction.customId);
-
-
-        if (buttonInteraction.user.id !== interaction.user.id) {
-            await buttonInteraction.reply({
-                content: 'This button is not for you!',
-                ephemeral: true
-            });
-            return;
-        }
-
-        try {
-            await buttonInteraction.deferUpdate();
-
-            const [action, amount, tokenAddress] = buttonInteraction.customId.split('_');
-            const amountNum = parseInt(amount);
-
-            console.log('Parsed action:', action);
-            console.log('Parsed amount:', amount);
-
-            // Handle initial buy button
-            if (buttonInteraction.customId.startsWith('buyNow_')) {
-                await handleBuyNow(buttonInteraction, tokenInfo, user, buyPriceFromConfig);
-                return;
-            }
-
-            // Handle buy settings configuration
-            if (buttonInteraction.customId === 'buy_setting_config') {
-                const modal = new ModalBuilder()
-                    .setCustomId('buyPriceModal')
-                    .setTitle('Set Buy Price');
-
-                const buyPriceInput = new TextInputBuilder()
-                    .setCustomId('buyPriceInput')
-                    .setLabel('Enter buy price in SOL (e.g., 0.1)')
-                    .setStyle(TextInputStyle.Short)
-                    .setPlaceholder('0.1')
-                    .setRequired(true);
-
-                const actionRow = new ActionRowBuilder<ModalActionRowComponentBuilder>()
-                    .addComponents(buyPriceInput);
-
-                modal.addComponents(actionRow);
-                await buttonInteraction.showModal(modal);
-
-                try {
-                    const modalSubmission = await buttonInteraction.awaitModalSubmit({
-                        time: 60000,
-                        filter: i => i.user.id === buttonInteraction.user.id,
-                    });
-
-                    if (modalSubmission) {
-                        const buyPrice = parseFloat(modalSubmission.fields.getTextInputValue('buyPriceInput'));
-
-                        if (isNaN(buyPrice) || buyPrice <= 0) {
-                            await modalSubmission.reply({
-                                content: 'Invalid input. Please enter a valid number greater than 0.',
-                                ephemeral: true
-                            });
-                            return;
-                        }
-
-                        await UserRepository.setUserSetting(user.discordId, 'buyAmount', buyPrice);
-                        await modalSubmission.reply({
-                            content: `Successfully set buy price to ${buyPrice} SOL`,
-                            ephemeral: true
-                        });
-                    }
-                } catch (error) {
-                    console.error('Modal interaction error:', error);
-                }
-                return;
-            }
-
-            // Handle percentage-based buy/sell
-            if ((action === 'buy' || action === 'sell') && !isNaN(amountNum)) {
-
-                if (action === 'buy') {
-                    const buyAmount = (buyPriceFromConfig * amountNum) / 100;
-                    await handleBuyNow(buttonInteraction, tokenInfo, user, buyAmount);
-                } else {
-                    try {
-                        await handleSellNow(buttonInteraction, tokenInfo, user, amountNum);
-                    } catch (error) {
-                        console.error('Error handling sell:', error);
-                        await buttonInteraction.followUp({
-                            content: `Error processing sell: ${error.message}`,
-                            ephemeral: true
-                        });
-                    }
-                }
-                return;
-            }
-
-            // Handle refresh
-            if (action === 'refresh') {
-                await handleRefresh(buttonInteraction, tokenInfo, user);
-                return;
-            }
-
-            // Handle custom amount modals
-            if (amount === 'x') {
-                await handleCustomAmount(buttonInteraction, tokenInfo, user);
-                return;
-            }
-
-        } catch (error) {
-            console.error('Error handling button interaction:', error);
-            await buttonInteraction.followUp({
-                content: `Error processing your request: ${error.message}`,
-                ephemeral: true
-            });
-        }
-    });
-}
 
 function calculateSellAmount(
     currentBalance: number,
@@ -284,7 +112,7 @@ async function handleCustomAmount(
 
     const amountInput = new TextInputBuilder()
         .setCustomId('amountInput')
-        .setLabel(isCustomBuy ? 'Amount in SOL' : `Amount in ${tokenInfo.symbol}`)
+        .setLabel(isCustomBuy ? 'Amount in SOL' : `Amount in ${tokenInfo?.symbol}`)
         .setStyle(TextInputStyle.Short)
         .setRequired(true);
 
@@ -396,6 +224,19 @@ export async function handleBuyNow(
     isInitialBuy: boolean = true // Flag to handle different interaction states
 ) {
     try {
+
+        const { hasBalance, currentBalance } = await hasEnoughBalance(
+            connection, 
+            user.walletId, 
+            buyAmount
+        );
+    
+        if (!hasBalance) {
+            throw new Error(
+                `Insufficient balance. You need ${(buyAmount + 0.01)} SOL (including fees) but only have ${currentBalance.toFixed(5)} SOL`
+            );
+        }
+        
         const platform = new DiscordAdapter(interaction);
 
         // Only defer if this is the initial buy
@@ -408,7 +249,7 @@ export async function handleBuyNow(
         }
 
         await interaction.followUp({
-            content: `Processing purchase for token: ${tokeninfo.name}`,
+            content: `Processing purchase for token: ${tokeninfo?.name}`,
             ephemeral: true
         });
 
@@ -416,7 +257,7 @@ export async function handleBuyNow(
             platform,
             interaction.channelId,
             user,
-            tokeninfo.tokenAddress,
+            tokeninfo?.tokenAddress,
             buyAmount
         );
 

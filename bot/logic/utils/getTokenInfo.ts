@@ -4,6 +4,7 @@ import { preBondingMarketInfo } from "./preBondingMarketInfo";
 import { TokenMarketData } from "./types";
 
 export async function getTokenInfo(pumpService: PumpFunSDK, tokenAddress: string): Promise<TokenMarketData> {
+    try {
     // Try both requests concurrently
     const results = await Promise.allSettled([
         getMarketFromDexscreener(tokenAddress),
@@ -25,6 +26,7 @@ export async function getTokenInfo(pumpService: PumpFunSDK, tokenAddress: string
         .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
         .map(result => result.reason.message)
         .join(',');
-
-    throw new Error(`Failed to fetch token info: ${errors}`);
+    } catch(errors) {
+        throw new Error(`Failed to fetch token info: ${errors}`);
+    }
 }

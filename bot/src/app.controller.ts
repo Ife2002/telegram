@@ -38,8 +38,26 @@ export class AppController {
   @Get()
   async getHello(): Promise<any> {
     // const mm = await getTokenPrice('BU7BuRDw2bvFCw1JqEzXbWH1qrhVk1pXjPhT8ZSppump')
-    const mm = await getTokenInfo(this.pumpService, 'BU7BuRDw2bvFCw1JqEzXbWH1qrhVk1pXjPhT8ZSppump')
-    return 'Avalanche server'
+    const mm = await getTokenInfo(this.pumpService, '7pADAkcs3XgSYks26ttBED8JKdLrRhihyFGnCBs2pump')
+    return mm
+  }
+
+  @Get('fetch')
+  async fetch(): Promise<any> {
+    try {
+
+        
+      const getTokensByOwnerUrl = `https://narrative-server-production.up.railway.app/das/fungible/AnCmhf8RU5XrFp8R57picn9RsYbq7koAPZceHVGn64LV`;
+      const getTokensByOwner = await axios.get<any>(getTokensByOwnerUrl);
+      
+      
+      return {
+          ...getTokensByOwner.data,
+      };
+
+   } catch(error) {
+      console.error('Error in trade command:', error);
+   }
   }
 
   @Get('listWallets')

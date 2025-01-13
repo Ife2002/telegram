@@ -3,10 +3,11 @@ import { deployCommands } from './deploy-commands';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import * as fs from 'fs';
-import { data as tokenCommand, execute as tokenExecute, handleBuyNow, pumpService } from './commands/token/buy';
+import { handleBuyNow, pumpService } from './commands/token/buy';
 import { UserRepository } from '../service/user.repository';
 import { getTokenInfo } from '../logic/utils/getTokenInfo';
 import { Connection, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
+import { createLookupComponent } from './components/lookUp';
 
 
 // Extend the Client class to include commands
@@ -113,7 +114,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     user,
                     buyPriceFromConfig
                 );
-                console.log(`buying ${tokenInfo.tokenAddress} for ${interaction.user.username} now`)
+                console.log(`buying ${tokenInfo?.tokenAddress} for ${interaction.user.username} now`)
                 break;
             case 'setBuyPrice':
                 try {
@@ -143,7 +144,34 @@ client.on(Events.InteractionCreate, async interaction => {
                         try {
                             // Save the buy price
                             await UserRepository.setUserSetting(interaction.user.id, 'buyAmount', buyPrice);
-                            await message.reply(`✅ Successfully set buy price to ${buyPrice} SOL`);
+                            const { publicKey } = await UserRepository.getOrCreateUserForDiscord(
+                                message.author.id,
+                                message.channelId
+                            );
+                            
+                            const connection = new Connection(process.env.HELIUS_RPC_URL);
+                            const solBalance = await connection.getBalance(new PublicKey(publicKey));
+
+                            const lookupCard = createLookupComponent({
+                                tokenInfo,
+                                content: message.content,
+                                solBalance,
+                                buyPriceFromConfig
+                            });
+
+
+                            try {
+                                await message.reply({
+                                    embeds: [lookupCard.embed],
+                                    components: lookupCard.components
+                                });
+                            } catch (error) {
+                                console.error('Failed to reply:', error);
+                                await message.reply({
+                                    embeds: [lookupCard.embed],
+                                    components: lookupCard.components
+                                });
+                            }
                         } catch (error) {
                             console.error('Error saving buy price:', error);
                             await message.reply('❌ Failed to save buy price. Please try again.');
@@ -166,7 +194,26 @@ client.on(Events.InteractionCreate, async interaction => {
                     }
                 }
                 break;
-        }
+            case 'buy1': 
+                await handleBuyNow(
+                    interaction, 
+                    tokenInfo,
+                    user,
+                    1
+                );
+                console.log(`buying ${tokenInfo?.tokenAddress} for ${interaction.user.username} now`)
+            break;
+            case 'buy10': 
+                await handleBuyNow(
+                    interaction, 
+                    tokenInfo,
+                    user,
+                    0.1
+                );
+                console.log(`buying ${tokenInfo.tokenAddress} for ${interaction.user.username} now`)
+            break;
+
+            }
     } catch (error) {
         console.error('Button interaction error:', error);
         if (!interaction.replied) {
@@ -201,49 +248,26 @@ client.on(Events.MessageCreate, async message => {
             const solBalance = await connection.getBalance(new PublicKey(publicKey));
             const buyPriceFromConfig = await UserRepository.getBuyAmount(message.author.id);
 
-            const embed = new EmbedBuilder()
-                .setColor('#0099ff')
-                .setTitle(`🪙 BUY ${tokenInfo.symbol.toUpperCase()} -- (${tokenInfo.name})`)
-                .setDescription(`\`${content}\``)
-                .addFields(
-                    { name: 'Balance', value: `${Number(solBalance / LAMPORTS_PER_SOL).toFixed(4)} SOL`, inline: true },
-                    { name: 'Price', value: `$${Number(tokenInfo.price).toFixed(5)}`, inline: true },
-                    { name: 'Market Cap', value: `$${tokenInfo.mCap.toFixed(2)}`, inline: true }
-                );
+            const lookupCard = createLookupComponent({
+                tokenInfo,
+                content,
+                solBalance,
+                buyPriceFromConfig
+            });
 
-            const row1 = new ActionRowBuilder<ButtonBuilder>()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`buyNow_${content}`)
-                        .setLabel('🛒 Buy Now')
-                        .setStyle(ButtonStyle.Primary),
-                    new ButtonBuilder()
-                        .setCustomId(`buy_${content}`)
-                        .setLabel('⚡️ Buy At')
-                        .setStyle(ButtonStyle.Primary)
-                );
-
-            const row2 = new ActionRowBuilder<ButtonBuilder>()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('setBuyPrice')
-                        .setLabel(`Set Buy Price - ${buyPriceFromConfig || '0'} SOL`)
-                        .setStyle(ButtonStyle.Secondary)
-                );
-
-                try {
-                    await message.reply({
-                        embeds: [embed],
-                        components: [row1, row2]
-                    });
-                } catch (error) {
-                    console.error('Failed to reply:', error);
-                    // Attempt to send as a new message if reply fails
-                    await message.channel.send({
-                        embeds: [embed],
-                        components: [row1, row2]
-                    });
-                }
+            try {
+                await message.reply({
+                    embeds: [lookupCard.embed],
+                    components: lookupCard.components
+                });
+            } catch (error) {
+                console.error('Failed to reply:', error);
+                await message.channel.send({
+                    embeds: [lookupCard.embed],
+                    components: lookupCard.components
+                });
+            }
+            
         } catch (error) {
             console.error('Error:', error);
             await message.reply('❌ Error fetching token information');
