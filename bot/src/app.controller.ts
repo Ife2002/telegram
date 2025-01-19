@@ -11,9 +11,10 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { getMarketFromDexscreener } from 'logic/utils/dexscreener';
 import { preBondingMarketInfo } from 'logic/utils/preBondingMarketInfo';
-import { getTokenInfo } from 'logic/utils/getTokenInfo';
+import { getTokenInfo } from 'logic/utils/astralane';
 import { getMint } from '@solana/spl-token';
 import { getTokenPrice } from 'logic/utils/getPrice';
+import { SolanaService } from './nozomi';
 
 @Controller()
 export class AppController {
@@ -22,7 +23,8 @@ export class AppController {
   private connection: Connection;
   constructor(
     private readonly appService: AppService, 
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly solanaService: SolanaService
   ) {
     this.connection = new Connection(process.env.HELIUS_RPC_URL)
     let wallet = new NodeWallet(Keypair.generate());
@@ -38,9 +40,14 @@ export class AppController {
   @Get()
   async getHello(): Promise<any> {
     // const mm = await getTokenPrice('BU7BuRDw2bvFCw1JqEzXbWH1qrhVk1pXjPhT8ZSppump')
-    const mm = await getTokenInfo(this.pumpService, '7pADAkcs3XgSYks26ttBED8JKdLrRhihyFGnCBs2pump')
+    const mm = await getTokenInfo('7pADAkcs3XgSYks26ttBED8JKdLrRhihyFGnCBs2pump')
     return mm
   }
+
+  @Get('swap')
+    async executeSwap() {
+        return await this.solanaService.executeSwap();
+    }
 
   @Get('fetch')
   async fetch(): Promise<any> {

@@ -13,7 +13,7 @@ import {
     TextInputStyle,
     ModalActionRowComponentBuilder
 } from 'discord.js';
-import { getTokenInfo } from "../../../logic/utils/getTokenInfo";
+import { getTokenInfo } from "../../../logic/utils/astralane";
 import { PumpFunSDK } from "pumpdotfun-sdk";
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import NodeWallet from '@coral-xyz/anchor/dist/cjs/nodewallet';
@@ -28,6 +28,7 @@ import { sell as raydiumSell } from '../../../raydium-sdk';
 import { UserRepository } from '../../../service/user.repository';
 import { toBigIntPrecise } from '../../../logic/utils';
 import { getAccount, getAssociatedTokenAddress, getMint } from '@solana/spl-token';
+import { getPriorityFees } from '../../../logic/utils/getPriorityFees';
 
 const connection = new Connection(process.env.HELIUS_RPC_URL);
 const wallet = new NodeWallet(Keypair.generate());
@@ -66,7 +67,7 @@ async function handleRefresh(
     user: UserType
 ) {
     try {
-    const updatedInfo = await getTokenInfo(pumpService, tokenInfo.tokenAddress);
+    const updatedInfo = await getTokenInfo(tokenInfo.tokenAddress);
     const tokenAccount = await getAssociatedTokenAddress(
         new PublicKey(tokenInfo.tokenAddress),
         new PublicKey(user.walletId)
@@ -81,10 +82,21 @@ async function handleRefresh(
         .setTitle(`🪙 ${updatedInfo.symbol} -- (${updatedInfo.name})`)
         .setDescription(`\`${tokenInfo.tokenAddress}\``)
         .addFields(
-            { name: 'Balance', value: `${balance} ${updatedInfo.symbol}`, inline: true },
-            { name: 'Price', value: `$${updatedInfo.price}`, inline: true },
-            { name: 'Market Cap', value: `$${updatedInfo.mCap.toFixed(2)}`, inline: true }
+            { name: 'Balance', value: `${balance} ${updatedInfo.symbol}`, inline: false },
+            { name: 'Price', value: `$${Number(updatedInfo.price).toFixed(8)}`, inline: false },
+            { name: 'Market Cap', value: `$${updatedInfo.mCap.toFixed(2)}`, inline: false }
         );
+
+        if (tokenInfo.imgUrl) {
+            try {
+                const imageUrl = tokenInfo.imgUrl;
+                if (imageUrl.startsWith('http') || imageUrl.startsWith('https')) {
+                    embed.setThumbnail(imageUrl);
+                }
+            } catch (error) {
+                console.error('Error setting image:', error);
+            }
+        }
 
     await interaction.editReply({
         embeds: [embed]
@@ -183,6 +195,9 @@ async function executeBuyOrder(
     let txSuccess = false;
     let signatures: string[] = [];
 
+    // Fetch dynamic priority fees from Raydium
+    const priorityFees = await getPriorityFees();
+
     if (shouldUsePump) {
         const result = await pumpService.buy(
             platform,
@@ -191,10 +206,7 @@ async function executeBuyOrder(
             mint,
             buyAmountLamports,
             3000n,
-            {
-                unitLimit: 300000,
-                unitPrice: 300000,
-            }
+            priorityFees
         );
         
         txSuccess = result.success && !!result.signature;

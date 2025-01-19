@@ -19,7 +19,7 @@ import NodeWallet from '@coral-xyz/anchor/dist/cjs/nodewallet';
 import { AnchorProvider } from '@coral-xyz/anchor';
 import { UserType } from 'types/user.types';
 import axios from 'axios';
-import { getTokenInfo } from "../../../logic/utils/getTokenInfo";
+import { getTokenInfo } from "../../../logic/utils/astralane";
 import { getTokenPrice } from '../../../logic/utils/getPrice';
 import { UserRepository } from '../../../service/user.repository';
 import { DiscordAdapter } from '../../../lib/utils';
@@ -288,7 +288,7 @@ export const data = new SlashCommandBuilder()
             throw new Error(`Transaction failed: ${confirmation.value.err}`);
         }
     
-        const tokeninfo = await getTokenInfo(pumpService, activeToken.id);
+        const tokeninfo = await getTokenInfo(activeToken.id);
         const tokenAccount = await getAssociatedTokenAddress(
             new PublicKey(tokeninfo.tokenAddress),
             new PublicKey(user.walletId)
@@ -392,7 +392,7 @@ export const data = new SlashCommandBuilder()
             tokenData: token
         });
 
-        const tokenInfo = await getTokenInfo(pumpService, token?.id);
+        const tokenInfo = await getTokenInfo(token?.id);
                     
         const connection = new Connection(process.env.HELIUS_RPC_URL);
         const solBalance = await connection.getBalance(new PublicKey(userWallet));

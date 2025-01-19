@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { handleBuyNow, pumpService } from './commands/token/buy';
 import { UserRepository } from '../service/user.repository';
-import { getTokenInfo } from '../logic/utils/getTokenInfo';
+import { getTokenInfo } from '../logic/utils/astralane';
 import { Connection, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import { createLookupComponent } from './components/lookUp';
 
@@ -107,7 +107,7 @@ client.on(Events.InteractionCreate, async interaction => {
         switch (action) {
             case 'buyNow':
                 // Get token info first
-                const tokenInfo = await getTokenInfo(pumpService, address);
+                const tokenInfo = await getTokenInfo(address);
                 await handleBuyNow(
                     interaction, 
                     tokenInfo,
@@ -238,7 +238,7 @@ client.on(Events.MessageCreate, async message => {
             // Validate it's a real public key
             new PublicKey(content);
             
-            const tokenInfo = await getTokenInfo(pumpService, content);
+            const tokenInfo = await getTokenInfo(content);
             const { publicKey } = await UserRepository.getOrCreateUserForDiscord(
                 message.author.id,
                 message.channelId

@@ -1,5 +1,5 @@
 import { redis } from './config/redis.config';
-import { DEFAULT_SETTINGS, ISettings, UserType } from '../types/user.types';
+import { DEFAULT_SETTINGS, ISettings, isValidSetting, UserType } from '../types/user.types';
 import { Keypair } from '@solana/web3.js';
 import TelegramBot from 'node-telegram-bot-api';
 import bs58 from 'bs58'
@@ -384,11 +384,110 @@ export class UserRepository {
     return users;
   }
 
+  // Get individual settings
   static async updateBuyAmount(userId: string, amount: number): Promise<void> {
     await this.setUserSetting(userId, 'buyAmount', amount);
   }
 
   static async getBuyAmount(userId: string): Promise<number> {
     return await this.getUserSetting(userId, 'buyAmount');
+  }
+
+  static async setSlippage(userId: string, slippage: number): Promise<void> {
+    if (!isValidSetting('slippage', slippage)) {
+      throw new Error('Invalid slippage value');
+    }
+    return await this.setUserSetting(userId, 'slippage', slippage);
+  }
+
+  static async getAutoBuyAmount(userId: string): Promise<number> {
+    const value = await redis.hget(`${this.SETTINGS_PREFIX}${userId}`, 'autoBuyAmount');
+    return value ? JSON.parse(value) : DEFAULT_SETTINGS.autoBuyAmount;
+  }
+
+  static async getSlippage(userId: string): Promise<number> {
+    return await this.getUserSetting(userId, 'slippage');
+  }
+
+  static async getGasAdjustment(userId: string): Promise<number> {
+    const value = await redis.hget(`${this.SETTINGS_PREFIX}${userId}`, 'gasAdjustment');
+    return value ? JSON.parse(value) : DEFAULT_SETTINGS.gasAdjustment;
+  }
+
+  static async getBuyPrices(userId: string): Promise<Record<string, number>> {
+    const value = await redis.hget(`${this.SETTINGS_PREFIX}${userId}`, 'buyPrices');
+    return value ? JSON.parse(value) : DEFAULT_SETTINGS.buyPrices;
+  }
+
+  // Set individual settings with validation
+  static async setBuyAmount(userId: string, amount: number): Promise<boolean> {
+    if (!isValidSetting('buyAmount', amount)) {
+      throw new Error('Invalid buy amount');
+    }
+    await redis.hset(`${this.SETTINGS_PREFIX}${userId}`, 'buyAmount', JSON.stringify(amount));
+    await this.updateLastModified(userId);
+    return true;
+  }
+
+  static async setAutoBuyAmount(userId: string, amount: number): Promise<boolean> {
+    if (!isValidSetting('autoBuyAmount', amount)) {
+      throw new Error('Invalid auto buy amount');
+    }
+    await redis.hset(`${this.SETTINGS_PREFIX}${userId}`, 'autoBuyAmount', JSON.stringify(amount));
+    await this.updateLastModified(userId);
+    return true;
+  }
+
+  static async setGasAdjustment(userId: string, adjustment: number): Promise<boolean> {
+    if (!isValidSetting('gasAdjustment', adjustment)) {
+      throw new Error('Invalid gas adjustment value');
+    }
+    await redis.hset(`${this.SETTINGS_PREFIX}${userId}`, 'gasAdjustment', JSON.stringify(adjustment));
+    await this.updateLastModified(userId);
+    return true;
+  }
+
+  static async setBuyPrices(userId: string, prices: Record<string, number>): Promise<boolean> {
+    if (!isValidSetting('buyPrices', prices)) {
+      throw new Error('Invalid buy prices object');
+    }
+    await redis.hset(`${this.SETTINGS_PREFIX}${userId}`, 'buyPrices', JSON.stringify(prices));
+    await this.updateLastModified(userId);
+    return true;
+  }
+
+  // Utility methods
+  static async getAllSettings(userId: string): Promise<ISettings> {
+    const settings = await redis.hgetall(`${this.SETTINGS_PREFIX}${userId}`);
+    
+    if (!settings || Object.keys(settings).length === 0) {
+      return DEFAULT_SETTINGS;
+    }
+
+    return Object.entries(settings).reduce((acc, [key, value]) => {
+      acc[key as keyof ISettings] = JSON.parse(value);
+      return acc;
+    }, {} as ISettings);
+  }
+
+  static async resetSettings(userId: string): Promise<boolean> {
+    const settingsKey = `${this.SETTINGS_PREFIX}${userId}`;
+    await redis.del(settingsKey);
+    
+    const multi = redis.multi();
+    Object.entries(DEFAULT_SETTINGS).forEach(([key, value]) => {
+      multi.hset(settingsKey, key, JSON.stringify(value));
+    });
+    
+    await multi.exec();
+    return true;
+  }
+
+  private static async updateLastModified(userId: string): Promise<void> {
+    await redis.hset(
+      `${this.SETTINGS_PREFIX}${userId}`, 
+      'lastUpdated', 
+      JSON.stringify(new Date().toISOString())
+    );
   }
 }

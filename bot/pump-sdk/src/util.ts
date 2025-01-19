@@ -42,75 +42,104 @@ import { MessagePlatform } from "./adapter";
     priorityFees?: PriorityFee,
     commitment: Commitment = DEFAULT_COMMITMENT,
     finality: Finality = DEFAULT_FINALITY
-  ): Promise<TransactionResult> {
+): Promise<TransactionResult> {
     let newTx = new Transaction();
-  
-    if (priorityFees) {
-      const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({
-        units: priorityFees.unitLimit,
-      });
-  
-      const addPriorityFee = ComputeBudgetProgram.setComputeUnitPrice({
-        microLamports: priorityFees.unitPrice,
-      });
-      newTx.add(modifyComputeUnits);
-      newTx.add(addPriorityFee);
-    }
-  
-    newTx.add(tx);
-  
-    let versionedTx = await buildVersionedTx(connection, payer, newTx, commitment);
-    versionedTx.sign(signers);
-  
-    try {
-      const sig = await connection.sendTransaction(versionedTx, {
-        skipPreflight: false,
-        maxRetries: 3
-      });
 
-      if (!sig) {
-        console.error("No signature returned from transaction");
-        return {
-          success: false,
-          error: "No signature returned from transaction",
-        };
-      }
-    
-      // Only send message if we have a valid signature
-      const messageText = `Transaction sent: https://solscan.io/tx/${sig}`;
-      try {
-        await platform.sendMessage(chatId, messageText);
-      } catch (botError) {
-        console.error("Failed to send Telegram message:", botError);
-        // Continue with transaction processing even if message fails
-      }
-  
-      let txResult = await getTxDetails(connection, sig, commitment, finality);
-      if (!txResult) {
-        return {
-          success: false,
-          error: "Transaction failed",
-        };
-      }
-      return {
-        success: true,
-        signature: sig,
-        results: txResult,
-      };
-      
-    } catch (e) {
-      if (e instanceof SendTransactionError) {
-        let ste = e as SendTransactionError;
-        console.log(await ste.getLogs(connection));
-      } else {
-        console.error(e);
-      }
-      return {
-        error: e,
-        success: false,
-      };
+    if (priorityFees) {
+        const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({
+            units: priorityFees.unitLimit,
+        });
+
+        const addPriorityFee = ComputeBudgetProgram.setComputeUnitPrice({
+            microLamports: priorityFees.unitPrice,
+        });
+        newTx.add(modifyComputeUnits);
+        newTx.add(addPriorityFee);
     }
-  }
+
+    newTx.add(tx);
+
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount < maxRetries) {
+        try {
+            // Get fresh blockhash for each attempt
+            const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+            
+            let versionedTx = await buildVersionedTx(connection, payer, newTx, commitment);
+            versionedTx.sign(signers);
+
+            const sig = await connection.sendTransaction(versionedTx, {
+                skipPreflight: true,
+                maxRetries: 3
+            });
+
+            if (!sig) {
+                throw new Error("No signature returned from transaction");
+            }
+
+            // Send notification
+            const messageText = `🟡 Transaction sent, waiting for confirmation: https://solscan.io/tx/${sig}`;
+            try {
+                await platform.sendMessage(chatId, messageText);
+            } catch (botError) {
+                console.error("Failed to send message:", botError);
+            }
+
+            // Wait for confirmation with timeout
+            const confirmation = await connection.confirmTransaction(
+                {
+                    blockhash,
+                    lastValidBlockHeight,
+                    signature: sig,
+                },
+                commitment
+            ).then(
+                result => result,
+                error => {
+                    if (error.toString().includes('block height exceeded')) {
+                        throw new Error('Transaction expired');
+                    }
+                    throw error;
+                }
+            );
+
+            if (confirmation.value.err) {
+                throw new Error(`Transaction failed: ${confirmation.value.err}`);
+            }
+
+            let txResult = await getTxDetails(connection, sig, commitment, finality);
+            if (!txResult) {
+                throw new Error("Failed to get transaction details");
+            }
+
+            return {
+                success: true,
+                signature: sig,
+                results: txResult,
+            };
+        } catch (error) {
+            console.error(`Attempt ${retryCount + 1} failed:`, error);
+            
+            if (retryCount === maxRetries - 1) {
+                return {
+                    error,
+                    success: false,
+                };
+            }
+            
+            // Wait before retrying
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            retryCount++;
+        }
+    }
+
+    return {
+        success: false,
+        error: "Max retries exceeded",
+    };
+}
   
   export const buildVersionedTx = async (
     connection: Connection,

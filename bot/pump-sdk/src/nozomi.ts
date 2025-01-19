@@ -12,13 +12,14 @@ import {
     Finality
   } from '@solana/web3.js';
 import { getTxDetails } from './util';
+import { MessagePlatform } from './adapter';
   
   // Nozomi configuration
   const NOZOMI_TIP_ADDRESS = new PublicKey("TEMPaMeCRFAS9EKF53Jd6KpHxgL47uWLcpFArU1Fanq");
-  const MIN_TIP_LAMPORTS = 1_000_000; // 0.001 SOL
-  const DEFAULT_COMPUTE_UNIT_PRICE = 1_000_000; // Recommended minimum CU price
+  const MIN_TIP_LAMPORTS = 10_000_000; // 0.01 SOL
+  const DEFAULT_COMPUTE_UNIT_PRICE = 1_400_000; // Recommended minimum CU price
   const DEFAULT_COMMITMENT = 'confirmed';
-  const DEFAULT_FINALITY = 'finalized';
+  const DEFAULT_FINALITY = 'confirmed';
   
   interface PriorityFee {
     unitLimit: number;
@@ -33,13 +34,15 @@ import { getTxDetails } from './util';
   }
   
   export async function sendTx(
-    connection: Connection,
-    tx: Transaction,
-    payer: PublicKey,
-    signers: Keypair[],
-    priorityFees?: PriorityFee,
-    commitment: Commitment = DEFAULT_COMMITMENT,
-    finality: Finality = DEFAULT_FINALITY
+     platform: MessagePlatform,
+     chatId: string | number,
+     connection: Connection,
+     tx: Transaction,
+     payer: PublicKey,
+     signers: Keypair[],
+     priorityFees?: PriorityFee,
+     commitment: Commitment = DEFAULT_COMMITMENT,
+     finality: Finality = DEFAULT_FINALITY
   ): Promise<TransactionResult> {
     let newTx = new Transaction();
     
@@ -52,7 +55,7 @@ import { getTxDetails } from './util';
     newTx.add(tipInstruction);
     
     // Add compute budget instructions
-    const computeUnits = priorityFees?.unitLimit ?? 200_000;
+    const computeUnits = priorityFees?.unitLimit ?? 1_000_000;
     const computeUnitPrice = priorityFees?.unitPrice ?? DEFAULT_COMPUTE_UNIT_PRICE;
     
     const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({
@@ -78,6 +81,22 @@ import { getTxDetails } from './util';
         maxRetries: 3, // Add retries since Nozomi will retry on their end too
       });
       console.log("Transaction signature:", `https://solscan.io/tx/${sig}`);
+
+      if (!sig) {
+        console.error("No signature returned from transaction");
+        return {
+          success: false,
+          error: "No signature returned from transaction",
+        };
+      }
+
+      const messageText = `🟡 Transaction sent, waiting for confirmation: https://solscan.io/tx/${sig}`;
+      try {
+        await platform.sendMessage(chatId, messageText);
+      } catch (botError) {
+        console.error("Failed to send Telegram message:", botError);
+        // Continue with transaction processing even if message fails
+      }
       
       let txResult = await getTxDetails(connection, sig, commitment, finality);
       if (!txResult) {
@@ -106,21 +125,22 @@ import { getTxDetails } from './util';
   }
   
   export const buildVersionedTx = async (
-    connection: Connection,
-    payer: PublicKey,
-    tx: Transaction,
-    commitment: Commitment = DEFAULT_COMMITMENT
-  ): Promise<VersionedTransaction> => {
-    const blockHash = (await connection.getLatestBlockhash(commitment)).blockhash;
+      connection: Connection,
+      payer: PublicKey,
+      tx: Transaction,
+      commitment: Commitment = DEFAULT_COMMITMENT
+    ): Promise<VersionedTransaction> => {
+      const blockHash = (await connection.getLatestBlockhash('finalized'))
+        .blockhash;
     
-    let messageV0 = new TransactionMessage({
-      payerKey: payer,
-      recentBlockhash: blockHash,
-      instructions: tx.instructions,
-    }).compileToV0Message();
+      let messageV0 = new TransactionMessage({
+        payerKey: payer,
+        recentBlockhash: blockHash,
+        instructions: tx.instructions,
+      }).compileToV0Message();
     
-    return new VersionedTransaction(messageV0);
-  };
+      return new VersionedTransaction(messageV0);
+    };
   
   // Helper function to create Nozomi connection
   export function createNozomiConnection(
