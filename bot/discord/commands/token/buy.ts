@@ -196,6 +196,8 @@ async function executeBuyOrder(
     let txSuccess = false;
     let signatures: string[] = [];
 
+    const slippage = await UserRepository.getUserSetting(user.discordId, "slippage");
+
     // Fetch dynamic priority fees from Raydium
     const priorityFees = await getPriorityFees();
 
@@ -219,7 +221,8 @@ async function executeBuyOrder(
             connection,
             mint.toBase58(),
             buyAmount * Math.pow(10, mintInfo.decimals),
-            Keypair.fromSecretKey(bs58.decode(user.encryptedPrivateKey))
+            Keypair.fromSecretKey(bs58.decode(user.encryptedPrivateKey)),
+            Number(slippage)
         );
         
         txSuccess = result.signatures.length > 0;

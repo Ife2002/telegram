@@ -6,6 +6,7 @@ import { bs58 } from '@coral-xyz/anchor/dist/cjs/utils/bytes';
 import { PriorityFeeResponse, SwapComputeResponse, SwapParams, SwapResult, SwapTransactionResponse } from './types';
 import TelegramBot from 'node-telegram-bot-api';
 import { MessagePlatform } from 'lib/utils';
+import { UserRepository } from 'service/user.repository';
 
 
 
@@ -133,7 +134,7 @@ export async function swap(platform: MessagePlatform, chatId: string | number, {
               maxRetries: 3 // Add retry attempts for sending
             });
 
-            console.log(`Transaction sent, txId: ${txId}`);
+            platform.sendMessage( chatId, `🟡 Transaction sent ${ retryCount > 0? "again" : ""}, waiting for confirmation: ${txId}`);
 
             // Use shorter confirmation timeout and handle errors
             const confirmation = await connection.confirmTransaction(
@@ -170,7 +171,7 @@ export async function swap(platform: MessagePlatform, chatId: string | number, {
             }
             
             // Wait before retrying
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 500));
             retryCount++;
           }
         }

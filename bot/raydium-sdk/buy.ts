@@ -14,7 +14,7 @@ import { MessagePlatform } from "lib/utils";
  * @param {string} payer/owner - The payer address for the transaction.
  * @returns {Promise<void>} - A promise that resolves when the swap transaction is completed.
  */
-export async function buy(platform: MessagePlatform, chatId: string | number, connection: Connection, mint:string, amount:number, owner:Keypair): Promise<SwapResult> {
+export async function buy(platform: MessagePlatform, chatId: string | number, connection: Connection, mint:string, amount:number, owner:Keypair, slippage: number): Promise<SwapResult> {
   /// account for their mint amount in their decimals
   return await swap(platform, chatId, {
     connection, 
@@ -22,6 +22,6 @@ export async function buy(platform: MessagePlatform, chatId: string | number, co
     inputMint: NATIVE_MINT.toBase58(), 
     outputMint: mint, 
     amount, 
-    slippage: 15, 
+    slippage, 
     txVersion: 'V0'});
 }
