@@ -1,6 +1,8 @@
-import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { Connection, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import { TokenMarketData } from "../../logic/utils/types";
+import { parseUINumber } from "../../logic/utils/numberUI";
+import { UserRepository } from "../../service/user.repository";
 
 
 
@@ -26,9 +28,10 @@ export function createLookupComponent({
             { name: 'ADDITIONAL INFORMATION', value: '\u200b', inline: true },
             { name: 'Balance', value: `${Number(solBalance / LAMPORTS_PER_SOL).toFixed(4)} SOL`, inline: false },
             { name: 'Price', value: `$${Number(tokenInfo?.price).toFixed(6) || "Price not found"}`, inline: false },
-            { name: 'Market Cap', value: `$${Number(tokenInfo.mCap).toFixed(2)}`, inline: false },
+            { name: 'Market Cap', value: `$${parseUINumber(Number(tokenInfo.mCap))}`, inline: false },
         )
         .setTimestamp();
+
 
     // Add thumbnail if image URL exists
     if (tokenInfo.imgUrl) {
@@ -63,9 +66,55 @@ export function createLookupComponent({
                 .setStyle(ButtonStyle.Secondary)
         );
 
+        const row1 = new ActionRowBuilder<ButtonBuilder>()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`refresh_${content}`) // delimitter is underscroe
+                .setLabel('🔄 Refresh')
+                .setStyle(ButtonStyle.Primary),
+        );
+
+
     // Return both embed and components
     return {
         embed,
-        components: [row]
+        components: [row, row1]
     };
+}
+
+export async function handleRefresh(interaction, content, tokenInfo: TokenMarketData) {
+    try {
+        // Defer the update to show loading state
+        await interaction.deferUpdate();
+
+        // Get fresh data
+        const { publicKey } = await UserRepository.getOrCreateUserForDiscord(
+            interaction.user.id,
+            interaction.channelId
+        );
+        
+        const connection = new Connection(process.env.HELIUS_RPC_URL);
+        const solBalance = await connection.getBalance(new PublicKey(publicKey));
+        const buyPriceFromConfig = await UserRepository.getBuyAmount(interaction.user.id);
+
+        // Create new lookup card with fresh data
+        const updatedCard = createLookupComponent({
+            tokenInfo,
+            content,
+            solBalance,
+            buyPriceFromConfig
+        });
+
+        // Update the message with new data
+        await interaction.editReply({
+            embeds: [updatedCard.embed],
+            components: updatedCard.components
+        });
+    } catch (error) {
+        console.error('Error refreshing data:', error);
+        await interaction.editReply({
+            content: '❌ Failed to refresh data. Please try again.',
+            ephemeral: true
+        });
+    }
 }

@@ -1,6 +1,7 @@
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import { TokenMarketData } from "../../logic/utils/types";
+import { parseUINumber } from "../../logic/utils/numberUI";
 
 interface SellCardOptions {
     tokenInfo: TokenMarketData;
@@ -23,7 +24,7 @@ export function createSellCard({
             { name: 'ADDITIONAL INFORMATION', value: '\u200b', inline: true },
             { name: 'Balance', value: `${Number(solBalance / LAMPORTS_PER_SOL).toFixed(4)} SOL`, inline: false },
             { name: 'Price', value: `$${Number(tokenInfo?.price).toFixed(6) || "Price not found"}`, inline: false },
-            { name: 'Market Cap', value: `$${Number(tokenInfo.mCap).toFixed(2)}`, inline: false },
+            { name: 'Market Cap', value: `$${parseUINumber(Number(tokenInfo.mCap))}`, inline: false },
         )
         .setTimestamp();
 

@@ -29,6 +29,7 @@ import { UserRepository } from '../../../service/user.repository';
 import { toBigIntPrecise } from '../../../logic/utils';
 import { getAccount, getAssociatedTokenAddress, getMint } from '@solana/spl-token';
 import { getPriorityFees } from '../../../logic/utils/getPriorityFees';
+import { parseUINumber } from '../../../logic/utils/numberUI';
 
 const connection = new Connection(process.env.HELIUS_RPC_URL);
 const wallet = new NodeWallet(Keypair.generate());
@@ -84,7 +85,7 @@ async function handleRefresh(
         .addFields(
             { name: 'Balance', value: `${balance} ${updatedInfo.symbol}`, inline: false },
             { name: 'Price', value: `$${Number(updatedInfo.price).toFixed(8)}`, inline: false },
-            { name: 'Market Cap', value: `$${updatedInfo.mCap.toFixed(2)}`, inline: false }
+            { name: 'Market Cap', value: `$${parseUINumber(updatedInfo.mCap)}`, inline: false }
         );
 
         if (tokenInfo.imgUrl) {

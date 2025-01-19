@@ -80,7 +80,7 @@ import { MessagePlatform } from "./adapter";
             }
 
             // Send notification
-            const messageText = `🟡 Transaction sent, waiting for confirmation: https://solscan.io/tx/${sig}`;
+            const messageText = `🟡 Transaction sent ${ retryCount > 0? "again" : ""}, waiting for confirmation: https://solscan.io/tx/${sig}`;
             try {
                 await platform.sendMessage(chatId, messageText);
             } catch (botError) {

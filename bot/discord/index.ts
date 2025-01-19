@@ -7,7 +7,8 @@ import { handleBuyNow, pumpService } from './commands/token/buy';
 import { UserRepository } from '../service/user.repository';
 import { getTokenInfo } from '../logic/utils/astralane';
 import { Connection, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
-import { createLookupComponent } from './components/lookUp';
+import { createLookupComponent, handleRefresh } from './components/lookUp';
+import { TokenMarketData } from '../logic/utils/types';
 
 
 // Extend the Client class to include commands
@@ -91,6 +92,8 @@ client.on(Events.InteractionCreate, async interaction => {
 // });
 
 
+
+
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isButton()) return;
 
@@ -104,10 +107,14 @@ client.on(Events.InteractionCreate, async interaction => {
 
         const buyPriceFromConfig = await UserRepository.getBuyAmount(interaction.user.id);
 
+        // Fetch tokenInfo first for all cases that need it
+        let tokenInfo: TokenMarketData;
+        if (['buyNow', 'buy1', 'buy10', 'refresh'].includes(action)) {
+            tokenInfo = await getTokenInfo(address);
+        }
+
         switch (action) {
             case 'buyNow':
-                // Get token info first
-                const tokenInfo = await getTokenInfo(address);
                 await handleBuyNow(
                     interaction, 
                     tokenInfo,
@@ -211,6 +218,16 @@ client.on(Events.InteractionCreate, async interaction => {
                     0.1
                 );
                 console.log(`buying ${tokenInfo.tokenAddress} for ${interaction.user.username} now`)
+            break;
+
+            case 'refresh': 
+                 
+                await handleRefresh(
+                    interaction, 
+                    address,
+                    tokenInfo
+                );
+                console.log(`Refreshing ${tokenInfo.tokenAddress} for ${interaction.user.username} now`)
             break;
 
             }
