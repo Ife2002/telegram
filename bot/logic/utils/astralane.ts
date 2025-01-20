@@ -32,8 +32,6 @@ export async function getTokenInfo(tokenAddress: string): Promise<TokenMarketDat
             throw new Error('Invalid response format or no data received');
         }
 
-        console.log()
-
         // Return the first token's data
         return {
             tokenAddress: response?.data[0].token,

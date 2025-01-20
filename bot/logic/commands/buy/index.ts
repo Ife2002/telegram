@@ -48,6 +48,8 @@ export async function buy(
 
     const shouldUsePump = account && !account.complete;
 
+    const slippage = await UserRepository.getUserSetting(user.toString(), "slippage");
+
     // Route based on bonding completion status
     if (shouldUsePump) {
       // Pre-bonding phase - use Pump
@@ -67,7 +69,7 @@ export async function buy(
     } else {
       // Post-bonding phase - use Raydium
       await bot.sendMessage(chatId, "Executing buy - (post-bonding phase)...");
-      return await raydiumBuy(telegramPlatform, chatId, connection, mint.toBase58(), buyPriceFromConfig * Math.pow(10, mintInfo.decimals), userWallet);
+      return await raydiumBuy(telegramPlatform, chatId, connection, mint.toBase58(), buyPriceFromConfig * Math.pow(10, mintInfo.decimals), userWallet, Number(slippage));
     }
 
   } catch (error) {
