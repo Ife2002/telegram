@@ -43,6 +43,9 @@ export async function sell(
     
     
     const shouldUsePump = account && !account.complete;
+
+    const defaultPriorityFee = await UserRepository.getDefaultPriorityFee(user.toString());
+
     
    if(shouldUsePump) {
     // Execute buy transaction
@@ -54,6 +57,7 @@ export async function sell(
       mint,
       sellAmountBN,
       SLIPPAGE_BASIS_POINTS,
+      Number(defaultPriorityFee), 
       {
         unitLimit: 300000,
         unitPrice: 300000,

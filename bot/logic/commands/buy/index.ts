@@ -1,3 +1,8 @@
+/** Tech debt
+ * default priority fees should come from the user repository and be return as type number, when setting the default priority fees, 
+ * the set function should make sure its a float(validation)
+ */
+
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { PumpFunSDK, TransactionResult } from "pumpdotfun-sdk";
 import { buy as raydiumBuy } from "../../../raydium-sdk";
@@ -54,6 +59,9 @@ export async function buy(
     if (shouldUsePump) {
       // Pre-bonding phase - use Pump
       await bot.sendMessage(chatId, "Executing buy - (pre-bonding phase)...");
+
+      const defaultPriorityFee = await UserRepository.getDefaultPriorityFee(user.toString());
+
       return await sdk.buy(
         telegramPlatform,
         chatId,
@@ -61,6 +69,7 @@ export async function buy(
         mint,
         buyAmountLamports,
         SLIPPAGE_BASIS_POINTS,
+        Number(defaultPriorityFee), 
         {
           unitLimit: 300000,
           unitPrice: 300000,

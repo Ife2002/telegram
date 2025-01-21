@@ -173,5 +173,16 @@ export const Validators = {
             value: percent,
             error: 'Please enter a valid percentage between 0 and 100'
         };
+    },
+
+    priorityFees: (content: string) => {
+        const solAmount = parseFloat(content);
+        return {
+            isValid: !isNaN(solAmount) && 
+                    solAmount >= 0 && 
+                    solAmount <= 0.5, // Max 0.5 SOL as priority fee
+            value: solAmount,
+            error: 'Please enter a valid priority fee between 0 and 0.5 SOL'
+        };
     }
 };

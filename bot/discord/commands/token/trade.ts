@@ -330,6 +330,7 @@ export const data = new SlashCommandBuilder()
 
     async function executePumpSell(
         platform: DiscordAdapter,
+        user: UserType,
         interaction: ButtonInteraction,
         userWallet: Keypair,
         activeToken: ActiveToken,
@@ -337,6 +338,9 @@ export const data = new SlashCommandBuilder()
     ): Promise<string[]> {
         await platform.sendMessage(interaction.channelId, 
             `Executing Sell Order for ${activeToken?.tokenData?.content.metadata.name} on Pump`);
+
+        // basically the nozomi tip
+        const defaultPriorityFee = await UserRepository.getDefaultPriorityFee(user.discordId);    
     
         const result = await pumpService.sell(
             platform,
@@ -345,6 +349,7 @@ export const data = new SlashCommandBuilder()
             new PublicKey(activeToken.id),
             sellAmountBN,
             SLIPPAGE_BASIS_POINTS,
+            defaultPriorityFee,
             {
                 unitLimit: 300000,
                 unitPrice: 300000,
@@ -370,7 +375,7 @@ export const data = new SlashCommandBuilder()
         const shouldUsePump = account && !account.complete;
     
         let signatures = await (shouldUsePump ? 
-            executePumpSell(discordPlatform, interaction, userWallet, activeToken, sellAmountBN) :
+            executePumpSell(discordPlatform, user, interaction, userWallet, activeToken, sellAmountBN) :
             executeRaydiumSell(discordPlatform, interaction, userWallet, activeToken, sellAmountBN));
     
         await processTransactionConfirmation(signatures, activeToken, user, mintInfo, interaction, percentage);

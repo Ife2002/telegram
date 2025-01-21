@@ -17,6 +17,14 @@ const data = new SlashCommandBuilder()
     .setName('me')
     .setDescription('Information about your wallet and config setting');
 
+// util function for prirority formatting
+function formatPriorityFee(sol: number | null | undefined): string {
+        if (!sol) return 'Not set';
+        return `${sol} SOL`;
+        // Alternatively, if you want to show in SOL:
+        // return `${lamports / 1e9} SOL`;
+    }
+
 // Button creators
 function createButtons() {
     const copyButton = new ButtonBuilder()
@@ -44,13 +52,25 @@ function createSettingsButtons() {
         .setLabel('Adjust Slippage')
         .setStyle(ButtonStyle.Primary);
 
+    const adjustDefaultPriorityFee = new ButtonBuilder()
+        .setCustomId('adjust_priorityFee')
+        .setLabel('Adjust Default Priority fee')
+        .setStyle(ButtonStyle.Primary);
+
+
     const toggleNozomiButton = new ButtonBuilder()
         .setCustomId('toggle_nozomi')
         .setLabel('Toggle Nozomi Buy')
         .setStyle(ButtonStyle.Secondary);
 
-    return new ActionRowBuilder<ButtonBuilder>()
+    // Create two separate rows
+    const firstRow = new ActionRowBuilder<ButtonBuilder>()
         .addComponents(adjustBuyAmountButton, adjustSlippageButton, toggleNozomiButton);
+
+    const secondRow = new ActionRowBuilder<ButtonBuilder>()
+        .addComponents(adjustDefaultPriorityFee);
+
+    return [firstRow, secondRow];
 }
 
 // Embed creators
@@ -66,14 +86,19 @@ function createWalletEmbed(user: UserType, solBalance: number, userSetting: ISet
 }
 
 async function createSettingsEmbed(user: UserType) {
+    
     const slippage = await UserRepository.getUserSetting(user.discordId, "slippage");
     const buyAmount = await UserRepository.getUserSetting(user.discordId, "buyAmount");
+    const defaultSolPriorityFeeinLamport = await UserRepository.getUserSetting(user.discordId, "defaultPriorityFee");
+
+
     return new EmbedBuilder()
         .setColor('#0099ff')
         .setTitle('Your Settings')
         .addFields(
             { name: 'Buy Amount', value: `${buyAmount || 'Not set'}` },
             { name: 'Slippage', value: `${slippage || '2.5'}%` },
+            { name: 'Default Priority Fee', value: formatPriorityFee(defaultSolPriorityFeeinLamport) },
         )
         .setTimestamp();
 }
@@ -94,7 +119,7 @@ async function handleSettings(interaction: ButtonInteraction, user: UserType) {
 
     await interaction.reply({
         embeds: [settingsEmbed],
-        components: [settingsButtons],
+        components: settingsButtons,
         ephemeral: true
     });
 }
@@ -113,7 +138,7 @@ async function handleSlippage(interaction: ButtonInteraction, user: UserType) {
                 // Get the updated slippage to confirm
                 const slippage = await UserRepository.getSlippage(user.discordId);
                 
-                // Send confirmation
+                // Send confirmation: optimally it should return the setting its on currently with the sucess message
                 await message.reply({
                     content: `✅ Slippage has been set to ${slippage}%`,
                 });
@@ -133,6 +158,42 @@ async function handleSlippage(interaction: ButtonInteraction, user: UserType) {
         }
     }
 }
+
+async function handleDefaultPriorityFee(interaction: ButtonInteraction, user: UserType) {
+    /// recomended should be based on nozomi api median tip
+    try {
+        await DMCollectorService.collectDM(interaction, {
+            prompt: "Please enter your desired Priority fee in SOl (e.g. 0.01). Recommended: 0.01",
+            validator: Validators.priorityFees,
+            async onSuccess(message, value) {
+                // Save the slippage value
+                await UserRepository.setDefaultPriorityFee(user.discordId, value);
+                
+                // Get the updated priority fee to confirm
+                const defaultPriorityFee = await UserRepository.getDefaultPriorityFee(user.discordId);
+                
+                // Send confirmation: optimally it should return the setting its on currently with the sucess message
+                await message.reply({
+                    content: `✅ Default Priority fee has been set to ${defaultPriorityFee} SOL`,
+                });
+            },
+            async onError(message, error) {
+                await message.reply(`❌ ${error}. Please enter a valid percentage between 0 and 0.5.`);
+            },
+            timeout: 30000 // 30 seconds to respond
+        });
+    } catch (error) {
+        console.error('Error in handleSlippage:', error);
+        if (!interaction.replied) {
+            await interaction.reply({
+                content: '❌ An error occurred while setting slippage. Please try again.',
+                ephemeral: true
+            });
+        }
+    }
+}
+
+
 // Main execute function
 async function execute(interaction: ChatInputCommandInteraction, user: UserType) {
     const connection = new Connection(process.env.HELIUS_RPC_URL);
@@ -150,7 +211,7 @@ async function execute(interaction: ChatInputCommandInteraction, user: UserType)
     });
 
     // Set up collector
-    const filter = i => ['copy_address', 'settings', 'adjust_slippage'].includes(i.customId) && 
+    const filter = i => ['copy_address', 'settings', 'adjust_slippage', 'adjust_priorityFee'].includes(i.customId) && 
                        i.user.id === interaction.user.id;
     const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 });
 
@@ -165,6 +226,9 @@ async function execute(interaction: ChatInputCommandInteraction, user: UserType)
                 break;
             case 'adjust_slippage':
                 await handleSlippage(i, user);
+                break;
+            case 'adjust_priorityFee':
+                await handleDefaultPriorityFee(i, user);
                 break;
         }
     });

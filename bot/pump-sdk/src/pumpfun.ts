@@ -134,7 +134,8 @@ import {
       buyer: Keypair,
       mint: PublicKey,
       buyAmountSol: bigint,
-      slippageBasisPoints: bigint = 500n,
+      slippageBasisPoints: bigint = 3000n,
+      tipInSOL?: number,
       priorityFees?: PriorityFee,
       commitment: Commitment = DEFAULT_COMMITMENT,
       finality: Finality = DEFAULT_FINALITY
@@ -148,13 +149,15 @@ import {
         commitment
       );
   
-      let buyResults = await sendTx(
+      let buyResults = await sendTxWithNozomi(
         platform,
         chatId,
+        this.nozomiConnection,
         this.connection,
         buyTx,
         buyer.publicKey,
         [buyer],
+        tipInSOL,
         priorityFees,
         commitment,
         finality
@@ -168,7 +171,8 @@ import {
       seller: Keypair,
       mint: PublicKey,
       sellTokenAmount: bigint,
-      slippageBasisPoints: bigint = 500n,
+      slippageBasisPoints: bigint = 3000n,
+      tipInSOL: number,
       priorityFees?: PriorityFee,
       commitment: Commitment = DEFAULT_COMMITMENT,
       finality: Finality = DEFAULT_FINALITY
@@ -181,13 +185,15 @@ import {
         commitment
       );
   
-      let sellResults = await sendTx(
+      let sellResults = await sendTxWithNozomi(
         platform,
         chatId,
+        this.nozomiConnection,
         this.connection,
         sellTx,
         seller.publicKey,
         [seller],
+        tipInSOL,
         priorityFees,
         commitment,
         finality

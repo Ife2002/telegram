@@ -9,17 +9,16 @@ import {
     ComputeBudgetProgram,
     SystemProgram,
     Commitment,
-    Finality
+    Finality, 
+    LAMPORTS_PER_SOL
   } from '@solana/web3.js';
 import { getTxDetails } from './util';
 import { MessagePlatform } from './adapter';
   
   // Nozomi configuration
-  const NOZOMI_TIP_ADDRESS = new PublicKey("TEMPaMeCRFAS9EKF53Jd6KpHxgL47uWLcpFArU1Fanq");
-  const MIN_TIP_LAMPORTS = 10_000_000; // 0.01 SOL
-  const DEFAULT_COMPUTE_UNIT_PRICE = 1_400_000; // Recommended minimum CU price
-  const DEFAULT_COMMITMENT = 'confirmed';
-  const DEFAULT_FINALITY = 'confirmed';
+const NOZOMI_TIP_ADDRESS = new PublicKey("nozrwQtWhEdrA6W8dkbt9gnUaMs52PdAv5byipnadq3");
+const DEFAULT_COMMITMENT: Commitment = "confirmed";
+const DEFAULT_FINALITY: Finality = "confirmed";
   
   interface PriorityFee {
     unitLimit: number;
@@ -34,96 +33,138 @@ import { MessagePlatform } from './adapter';
   }
   
   export async function sendTx(
-     platform: MessagePlatform,
-     chatId: string | number,
-     connection: Connection,
-     tx: Transaction,
-     payer: PublicKey,
-     signers: Keypair[],
-     priorityFees?: PriorityFee,
-     commitment: Commitment = DEFAULT_COMMITMENT,
-     finality: Finality = DEFAULT_FINALITY
-  ): Promise<TransactionResult> {
+    platform: MessagePlatform,
+    chatId: string | number,
+    nozomiConnection: Connection,
+    mainConnection: Connection,
+    tx: Transaction,
+    payer: PublicKey,
+    signers: Array<{publicKey: PublicKey; secretKey: Uint8Array}>,
+    tipInSOL?: number,
+    priorityFees?: PriorityFee,
+    commitment: Commitment = DEFAULT_COMMITMENT,
+    finality: Finality = DEFAULT_FINALITY
+): Promise<TransactionResult> {
     let newTx = new Transaction();
-    
-    // Add Nozomi tip instruction first
-    const tipInstruction = SystemProgram.transfer({
-      fromPubkey: payer,
-      toPubkey: NOZOMI_TIP_ADDRESS,
-      lamports: MIN_TIP_LAMPORTS,
-    });
-    newTx.add(tipInstruction);
-    
-    // Add compute budget instructions
-    const computeUnits = priorityFees?.unitLimit ?? 1_000_000;
-    const computeUnitPrice = priorityFees?.unitPrice ?? DEFAULT_COMPUTE_UNIT_PRICE;
-    
-    const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({
-      units: computeUnits,
-    });
-    
-    const addPriorityFee = ComputeBudgetProgram.setComputeUnitPrice({
-      microLamports: computeUnitPrice,
-    });
-    
-    newTx.add(modifyComputeUnits);
-    newTx.add(addPriorityFee);
-    
-    // Add original transaction instructions
-    newTx.add(tx);
-    
-    let versionedTx = await buildVersionedTx(connection, payer, newTx, commitment);
-    versionedTx.sign(signers);
-    
-    try {
-      const sig = await connection.sendTransaction(versionedTx, {
-        skipPreflight: false,
-        maxRetries: 3, // Add retries since Nozomi will retry on their end too
-      });
-      console.log("Transaction signature:", `https://solscan.io/tx/${sig}`);
 
-      if (!sig) {
-        console.error("No signature returned from transaction");
-        return {
-          success: false,
-          error: "No signature returned from transaction",
-        };
-      }
-
-      const messageText = `🟡 Transaction sent, waiting for confirmation: https://solscan.io/tx/${sig}`;
-      try {
-        await platform.sendMessage(chatId, messageText);
-      } catch (botError) {
-        console.error("Failed to send Telegram message:", botError);
-        // Continue with transaction processing even if message fails
-      }
-      
-      let txResult = await getTxDetails(connection, sig, commitment, finality);
-      if (!txResult) {
-        return {
-          success: false,
-          error: "Transaction failed",
-        };
-      }
-      return {
-        success: true,
-        signature: sig,
-        results: txResult,
-      };
-    } catch (e) {
-      if (e instanceof SendTransactionError) {
-        let ste = e as SendTransactionError;
-        console.log(await ste.getLogs(connection));
-      } else {
-        console.error(e);
-      }
-      return {
-        error: e,
-        success: false,
-      };
+    // Add compute budget instructions if priority fees are specified
+    if (priorityFees) {
+        const modifyComputeUnits = ComputeBudgetProgram.setComputeUnitLimit({
+            units: priorityFees.unitLimit,
+        });
+        const addPriorityFee = ComputeBudgetProgram.setComputeUnitPrice({
+            microLamports: priorityFees.unitPrice,
+        });
+        newTx.add(modifyComputeUnits, addPriorityFee);
     }
+
+    // Add main transaction instructions
+    newTx.add(tx);
+
+    const NOZOMI_TIP_LAMPORTS = tipInSOL as number * LAMPORTS_PER_SOL; // x SOL in lamports //defaultPriorityfee dynamic from redis
+
+    // Add Nozomi tip instruction
+    const nozomiTipIx = SystemProgram.transfer({
+        fromPubkey: payer,
+        toPubkey: NOZOMI_TIP_ADDRESS,
+        lamports: NOZOMI_TIP_LAMPORTS
+    });
+    newTx.add(nozomiTipIx);
+
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount < maxRetries) {
+        try {
+            // Get fresh blockhash for each attempt
+            const { blockhash, lastValidBlockHeight } = await mainConnection.getLatestBlockhash('finalized');
+            
+            // Build versioned transaction
+            let messageV0 = new TransactionMessage({
+                payerKey: payer,
+                recentBlockhash: blockhash,
+                instructions: newTx.instructions,
+            }).compileToV0Message();
+            
+            let versionedTx = new VersionedTransaction(messageV0);
+            versionedTx.sign(signers);
+
+            // Send through Nozomi
+            const timestart = Date.now();
+            const sig = await nozomiConnection.sendRawTransaction(versionedTx.serialize(), {
+                skipPreflight: true,
+                maxRetries: 3
+            });
+
+            if (!sig) {
+                throw new Error("No signature returned from transaction");
+            }
+
+            // Send notification
+            const messageText = `🟡 Transaction sent${retryCount > 0 ? " again" : ""} through Nozomi, waiting for confirmation: https://solscan.io/tx/${sig}`;
+            try {
+                await platform.sendMessage(chatId, messageText);
+            } catch (botError) {
+                console.error("Failed to send message:", botError);
+            }
+
+            // Wait for confirmation with timeout
+            const confirmation = await mainConnection.confirmTransaction(
+                {
+                    blockhash,
+                    lastValidBlockHeight,
+                    signature: sig,
+                },
+                commitment
+            ).then(
+                result => result,
+                error => {
+                    if (error.toString().includes('block height exceeded')) {
+                        throw new Error('Transaction expired');
+                    }
+                    throw error;
+                }
+            );
+
+            if (confirmation.value.err) {
+                throw new Error(`Transaction failed: ${confirmation.value.err}`);
+            }
+
+            console.log("Confirmed in:", (Date.now() - timestart) / 1000, "seconds");
+
+            let txResult = await getTxDetails(mainConnection, sig, commitment, finality);
+            if (!txResult) {
+                throw new Error("Failed to get transaction details");
+            }
+
+            return {
+                success: true,
+                signature: sig,
+                results: txResult,
+            };
+            
+        } catch (error) {
+            console.error(`Attempt ${retryCount + 1} failed:`, error);
+            
+            if (retryCount === maxRetries - 1) {
+                return {
+                    error,
+                    success: false,
+                };
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            retryCount++;
+        }
+    }
+
+    return {
+        success: false,
+        error: "Max retries exceeded",
+    };
   }
-  
+
+
   export const buildVersionedTx = async (
       connection: Connection,
       payer: PublicKey,

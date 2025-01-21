@@ -201,6 +201,9 @@ async function executeBuyOrder(
     // Fetch dynamic priority fees from Raydium
     const priorityFees = await getPriorityFees();
 
+    // this is basically the nozomi tip
+    const defaultPriorityFee = await UserRepository.getDefaultPriorityFee(user.discordId);
+
     if (shouldUsePump) {
         const result = await pumpService.buy(
             platform,
@@ -209,6 +212,7 @@ async function executeBuyOrder(
             mint,
             buyAmountLamports,
             3000n,
+            defaultPriorityFee,
             priorityFees
         );
         
@@ -246,6 +250,8 @@ export async function handleBuyNow(
             user.walletId, 
             buyAmount
         );
+
+        //fetch priority
     
         if (!hasBalance) {
             throw new Error(
@@ -355,6 +361,9 @@ export async function handleSellNow(
             );
             const shouldUsePump = account && !account.complete;
 
+            // basically the nozomi tip
+            const defaultPriorityFee = await UserRepository.getDefaultPriorityFee(user.discordId);
+
             if (shouldUsePump) {
                 await discordPlatform.sendMessage(
                     interaction.channelId, 
@@ -368,6 +377,7 @@ export async function handleSellNow(
                     new PublicKey(tokeninfo.tokenAddress),
                     sellAmountBN,
                     3000n,
+                    defaultPriorityFee,
                     {
                         unitLimit: 300000,
                         unitPrice: 300000,
@@ -554,9 +564,9 @@ function createSuccessEmbed(tokeninfo: TokenMarketData, balance: number, signatu
     .setTitle(`🪙 BOUGHT ${tokeninfo.symbol} -- (${tokeninfo.name})`)
     .setDescription(`\`${tokeninfo.tokenAddress}\``)
     .addFields(
-        { name: 'Balance', value: `${balance} ${tokeninfo.symbol}`, inline: true },
-        { name: 'Price', value: `$${tokeninfo.price}`, inline: true },
-        { name: 'Market Cap', value: `$${tokeninfo.mCap.toFixed(2)}`, inline: true }
+        { name: 'Balance', value: `${balance.toFixed(2)} ${tokeninfo.symbol}`, inline: true },
+        { name: 'Price', value: `$${Number(tokeninfo.price).toFixed(8)}`, inline: true },
+        { name: 'Market Cap', value: `$${parseUINumber(tokeninfo.mCap.toFixed(2))}`, inline: true }
     );
     
     // Add transaction URL to embed
@@ -695,14 +705,14 @@ async function hasEnoughBalance(
         const balanceInSOL = balance / LAMPORTS_PER_SOL;
         const requiredWithFee = requiredAmount + MAX_TRANSACTION_FEE;
         
-        console.log('Balance check details:', {
-            walletBalance: balanceInSOL,
-            requiredAmount: requiredAmount,
-            requiredWithFee,
-            maxTxFee: MAX_TRANSACTION_FEE,
-            rawBalance: balance,
-            rawRequired: requiredAmount * LAMPORTS_PER_SOL
-        });
+        // console.log('Balance check details:', {
+        //     walletBalance: balanceInSOL,
+        //     requiredAmount: requiredAmount,
+        //     requiredWithFee,
+        //     maxTxFee: MAX_TRANSACTION_FEE,
+        //     rawBalance: balance,
+        //     rawRequired: requiredAmount * LAMPORTS_PER_SOL
+        // });
 
         return {
             hasBalance: balanceInSOL >= requiredWithFee,

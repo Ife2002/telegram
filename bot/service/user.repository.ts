@@ -221,6 +221,71 @@ export class UserRepository {
     }
   }
 
+  // Migration function
+  static async migrateDefaultPriorityFee(): Promise<void> {
+    try {
+      console.log('Starting defaultPriorityFee migration...');
+      
+      // Get all settings keys
+      const keys = await redis.keys(`${this.SETTINGS_PREFIX}*`);
+      console.log(`Found ${keys.length} settings records to migrate`);
+
+      // Process each user's settings
+      for (const key of keys) {
+        const settings = await redis.hgetall(key);
+        
+        // Check if defaultPriorityFee is missing
+        if (!settings.defaultPriorityFee) {
+          console.log(`Migrating settings for key: ${key}`);
+          
+          // Add the new field with default value
+          await redis.hset(
+            key,
+            'defaultPriorityFee',
+            JSON.stringify(DEFAULT_SETTINGS.defaultPriorityFee)
+          );
+
+          // Update lastUpdated
+          await redis.hset(
+            key,
+            'lastUpdated',
+            JSON.stringify(new Date().toISOString())
+          );
+        }
+      }
+
+      console.log('Migration completed successfully');
+    } catch (error) {
+      console.error('Error during migration:', error);
+      throw error;
+    }
+  }
+
+  static async verifyMigration(): Promise<{
+    total: number;
+    migrated: number;
+    missing: string[];
+  }> {
+    const keys = await redis.keys(`${this.SETTINGS_PREFIX}*`);
+    const missing: string[] = [];
+    let migrated = 0;
+
+    for (const key of keys) {
+      const settings = await redis.hgetall(key);
+      if (!settings.defaultPriorityFee) {
+        missing.push(key);
+      } else {
+        migrated++;
+      }
+    }
+
+    return {
+      total: keys.length,
+      migrated,
+      missing
+    };
+  }
+
   static async getOrCreateUserForTelegram(telegramId: string, bot: TelegramBot, chatId: number) {
     try {
       // Try to find existing user
@@ -391,6 +456,18 @@ export class UserRepository {
 
   static async getBuyAmount(userId: string): Promise<number> {
     return await this.getUserSetting(userId, 'buyAmount');
+  }
+
+  // Add new getter/setter methods
+  static async getDefaultPriorityFee(userId: string): Promise<number> {
+    return await this.getUserSetting(userId, 'defaultPriorityFee');
+  }
+
+  static async setDefaultPriorityFee(userId: string, fee: number): Promise<void> {
+    if (!isValidSetting('defaultPriorityFee', fee)) {
+      throw new Error('Invalid priority fee value');
+    }
+    return await this.setUserSetting(userId, 'defaultPriorityFee', fee);
   }
 
   static async setSlippage(userId: string, slippage: number): Promise<void> {

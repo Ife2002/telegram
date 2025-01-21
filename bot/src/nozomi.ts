@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AddressLookupTableAccount, Connection, Keypair, PublicKey, SystemProgram, TransactionMessage, VersionedMessage, VersionedTransaction } from '@solana/web3.js';
+import { AddressLookupTableAccount, Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, TransactionMessage, VersionedMessage, VersionedTransaction } from '@solana/web3.js';
 import { Wallet } from '@coral-xyz/anchor';
 import fetch from 'cross-fetch';
 import bs58 from 'bs58';
@@ -8,7 +8,7 @@ import bs58 from 'bs58';
 @Injectable()
 export class SolanaService {
     private readonly NOZOMI_URL = 'https://ams1.secure.nozomi.temporal.xyz/';
-    private readonly NOZOMI_TIP_LAMPORTS = 1000000; // 0.001 SOL
+    private readonly NOZOMI_TIP_LAMPORTS = 0.003 * LAMPORTS_PER_SOL; // 0.005 SOL
     private readonly NOZOMI_TIP_ADDRESS = new PublicKey("nozrwQtWhEdrA6W8dkbt9gnUaMs52PdAv5byipnadq3");
     
     private connection: Connection;
@@ -16,9 +16,12 @@ export class SolanaService {
     private wallet: Wallet;
 
     constructor(private readonly configService: ConfigService) {
+        
         this.validateEnvironment();
         this.initializeConnections();
         this.initializeWallet();
+
+        console.log(this.wallet.publicKey)
     }
 
     private validateEnvironment(): void {
