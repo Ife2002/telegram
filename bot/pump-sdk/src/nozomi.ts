@@ -101,7 +101,7 @@ const DEFAULT_FINALITY: Finality = "confirmed";
             }
 
             // Send notification
-            const messageText = `🟡 Transaction sent${retryCount > 0 ? " again" : ""} through Nozomi, waiting for confirmation: https://solscan.io/tx/${sig}`;
+            const messageText = `🟡 Transaction sent${retryCount > 0 ? " again" : ""} on Fastlane!, waiting for confirmation: https://solscan.io/tx/${sig}`;
             try {
                 await platform.sendMessage(chatId, messageText);
             } catch (botError) {

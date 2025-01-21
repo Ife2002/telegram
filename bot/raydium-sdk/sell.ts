@@ -1,9 +1,13 @@
 import { Connection, Keypair } from "@solana/web3.js";
 import { NATIVE_MINT } from '@solana/spl-token';
 import { swap } from "./swap";
+import { swapWithNozomi } from "./swapNozomi";
 import { side, SwapResult } from "./types";
 import TelegramBot from "node-telegram-bot-api";
 import { MessagePlatform } from "lib/utils";
+import * as dotenv from 'dotenv';
+
+dotenv.config();
 
 /**
  * Sell function that executes a swap transaction.
@@ -15,8 +19,9 @@ import { MessagePlatform } from "lib/utils";
  * @returns {Promise<void>} - A promise that resolves when the swap transaction is completed.
  */
 export async function sell(platform: MessagePlatform, chatId: string | number, connection: Connection, mint:string, amount:number, owner:Keypair): Promise<SwapResult> {
-  return await swap(platform, chatId, {
+  return await swapWithNozomi(platform, chatId, {
     connection, 
+    nozomiApiKey: process.env.NOZOMI_API,
     owner, 
     inputMint: mint, 
     outputMint: NATIVE_MINT.toBase58(), 
