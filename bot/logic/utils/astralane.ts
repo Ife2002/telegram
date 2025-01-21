@@ -1,5 +1,6 @@
 import axios from "axios";
 import { TokenMarketData } from "./types";
+import * as dotenv from 'dotenv';
 
 interface TokenData {
     timestamp: string;
@@ -22,7 +23,8 @@ export async function getTokenInfo(tokenAddress: string): Promise<TokenMarketDat
                 timeout: 10000,
                 headers: {
                     'Accept': 'application/json',
-                    'User-Agent': 'Mozilla/5.0'
+                    'User-Agent': 'Mozilla/5.0',
+                    'x-api-key': process.env.ASTRALANE_KEY
                 }
             }
         );
