@@ -5,6 +5,7 @@ import {
     ButtonStyle, 
     ChatInputCommandInteraction, 
     EmbedBuilder,
+    Message,
     SlashCommandBuilder 
 } from 'discord.js';
 import { ISettings, UserType } from '../../../types/user.types';
@@ -27,10 +28,10 @@ function formatPriorityFee(sol: number | null | undefined): string {
 
 // Button creators
 function createButtons() {
-    const copyButton = new ButtonBuilder()
-        .setCustomId('copy_address')
-        .setLabel('Copy Address')
-        .setStyle(ButtonStyle.Secondary);
+    // const copyButton = new ButtonBuilder()
+    //     .setCustomId('copy_address')
+    //     .setLabel('Copy Address')
+    //     .setStyle(ButtonStyle.Secondary);
 
     const settingButton = new ButtonBuilder()
         .setCustomId('settings')
@@ -38,7 +39,7 @@ function createButtons() {
         .setStyle(ButtonStyle.Primary);
 
     return new ActionRowBuilder<ButtonBuilder>()
-        .addComponents(copyButton, settingButton);
+        .addComponents(settingButton);
 }
 
 function createSettingsButtons() {
@@ -160,78 +161,156 @@ async function handleSlippage(interaction: ButtonInteraction, user: UserType) {
 }
 
 async function handleDefaultPriorityFee(interaction: ButtonInteraction, user: UserType) {
-    /// recomended should be based on nozomi api median tip
     try {
+        console.log('Starting handleDefaultPriorityFee, interaction state:', {
+            replied: interaction.replied,
+            deferred: interaction.deferred,
+            ephemeral: interaction.ephemeral
+        });
+
+        // Remove the deferUpdate and followUp from here since DMCollectorService handles it
         await DMCollectorService.collectDM(interaction, {
-            prompt: "Please enter your desired Priority fee in SOl (e.g. 0.01). Recommended: 0.01",
+            prompt: "Please enter your desired Priority fee in SOL (e.g. 0.01). Recommended: 0.01",
             validator: Validators.priorityFees,
             async onSuccess(message, value) {
-                // Save the slippage value
-                await UserRepository.setDefaultPriorityFee(user.discordId, value);
-                
-                // Get the updated priority fee to confirm
-                const defaultPriorityFee = await UserRepository.getDefaultPriorityFee(user.discordId);
-                
-                // Send confirmation: optimally it should return the setting its on currently with the sucess message
-                await message.reply({
-                    content: `✅ Default Priority fee has been set to ${defaultPriorityFee} SOL`,
-                });
+                console.log('DM collector success:', { value });
+                try {
+                    await UserRepository.setDefaultPriorityFee(user.discordId, value);
+                    const defaultPriorityFee = await UserRepository.getDefaultPriorityFee(user.discordId);
+                    
+                    // Send DM confirmation
+                    await message.reply({
+                        content: `✅ Default Priority fee has been set to ${defaultPriorityFee} SOL`,
+                    });
+
+                } catch (error) {
+                    console.error('Error in priority fee onSuccess:', error);
+                    await message.reply('❌ An error occurred while saving your priority fee.');
+                }
             },
             async onError(message, error) {
-                await message.reply(`❌ ${error}. Please enter a valid percentage between 0 and 0.5.`);
+                console.error('DM collector error:', error);
+                await message.reply(`❌ ${error}. Please enter a valid value between 0 and 0.5.`);
             },
-            timeout: 30000 // 30 seconds to respond
+            timeout: 100000
         });
+
     } catch (error) {
-        console.error('Error in handleSlippage:', error);
-        if (!interaction.replied) {
-            await interaction.reply({
-                content: '❌ An error occurred while setting slippage. Please try again.',
-                ephemeral: true
-            });
-        }
+        console.error('Error in handleDefaultPriorityFee:', error);
+        // DMCollectorService handles the error responses, so we don't need to handle them here
     }
+}
+
+async function handleBuyAmount(interaction: ButtonInteraction, user: UserType) {
+          console.log('Buy Amount')
+          console.log(interaction, user)
+}
+
+async function handleToggleNozomi(interaction: ButtonInteraction, user: UserType) {
+    console.log('Nozomi')
+    console.log(interaction, user)
 }
 
 
 // Main execute function
 async function execute(interaction: ChatInputCommandInteraction, user: UserType) {
-    const connection = new Connection(process.env.HELIUS_RPC_URL);
-    const solBalance = await connection.getBalance(new PublicKey(user.walletId));
+    try {
+        const connection = new Connection(process.env.HELIUS_RPC_URL);
+        const solBalance = await connection.getBalance(new PublicKey(user.walletId));
 
-    const mainButtons = createButtons();
-    const walletEmbed = createWalletEmbed(user, solBalance, user.settings);
+        const mainButtons = createButtons();
+        const walletEmbed = createWalletEmbed(user, solBalance, user.settings);
 
-    // Send initial message
-    await interaction.reply({
-        content: `${user.walletId}`,
-        embeds: [walletEmbed],
-        components: [mainButtons],
-        fetchReply: true
-    });
+        // Send initial message
+        const reply = await interaction.reply({
+            content: `${user.walletId}`,
+            embeds: [walletEmbed],
+            components: [mainButtons],
+            fetchReply: true
+        });
 
-    // Set up collector
-    const filter = i => ['copy_address', 'settings', 'adjust_slippage', 'adjust_priorityFee'].includes(i.customId) && 
-                       i.user.id === interaction.user.id;
-    const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 });
+        const filter = i => {
+            const validButtons = [
+                'copy_address', 
+                'settings', 
+                'adjust_slippage', 
+                'adjust_priorityFee',
+                'adjust_buy_amount', 
+                'toggle_nozomi' 
+            ];
+            return validButtons.includes(i.customId) && i.user.id === interaction.user.id;
+        };
 
-    // Handle button clicks
-    collector.on('collect', async (i: ButtonInteraction) => {
-        switch (i.customId) {
-            case 'copy_address':
-                await handleCopyAddress(i, user);
-                break;
-            case 'settings':
-                await handleSettings(i, user);
-                break;
-            case 'adjust_slippage':
-                await handleSlippage(i, user);
-                break;
-            case 'adjust_priorityFee':
-                await handleDefaultPriorityFee(i, user);
-                break;
+        const collector = interaction.channel.createMessageComponentCollector({ 
+            filter, 
+            time: 60000 
+        });
+
+        // Handle button clicks
+        collector.on('collect', async (i: ButtonInteraction) => {
+            try {
+                switch (i.customId) {
+                    case 'copy_address':
+                        await handleCopyAddress(i, user);
+                        break;
+                    case 'settings':
+                        await handleSettings(i, user);
+                        break;
+                    case 'adjust_slippage':
+                        await handleSlippage(i, user);
+                        break;
+                    case 'adjust_priorityFee':
+                        await handleDefaultPriorityFee(i, user);
+                        break;
+                    case 'adjust_buy_amount':
+                        await handleBuyAmount(i, user);  // Add this handler
+                        break;
+                    case 'toggle_nozomi':
+                        await handleToggleNozomi(i, user);  // Add this handler
+                        break;
+                    default:
+                        console.log(`Unhandled button ID: ${i.customId}`);
+                }
+            } catch (error) {
+                console.error(`Error handling button ${i.customId}:`, error);
+                try {
+                    if (!i.replied && !i.deferred) {
+                        await i.reply({
+                            content: '❌ An error occurred while processing your request. Please try again.',
+                            ephemeral: true
+                        });
+                    }
+                } catch (responseError) {
+                    console.error('Error sending error response:', responseError);
+                }
+            }
+        });
+
+        collector.on('end', async () => {
+            try {
+                // Disable all buttons when collector ends
+                const disabledButtons = mainButtons.setComponents(
+                    mainButtons.components.map(button => button.setDisabled(true))
+                );
+
+                if (reply instanceof Message) {
+                    await reply.edit({
+                        components: [disabledButtons]
+                    });
+                }
+            } catch (error) {
+                console.error('Error disabling buttons:', error);
+            }
+        });
+    } catch (error) {
+        console.error('Error in execute:', error);
+        if (!interaction.replied) {
+            await interaction.reply({
+                content: '❌ An error occurred while setting up the wallet interface. Please try again.',
+                ephemeral: true
+            });
         }
-    });
+    }
 }
 
 module.exports = { data, execute };

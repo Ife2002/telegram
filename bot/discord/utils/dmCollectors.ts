@@ -29,7 +29,7 @@ interface DMCollectorOptions {
 
 export class DMCollectorService {
     private static readonly DEFAULT_TIMEOUT = 60000; 
-    private static readonly DEFAULT_MAX_ATTEMPTS = 1;
+    private static readonly DEFAULT_MAX_ATTEMPTS = 3;
 
     static async collectDM(
         interaction: ButtonInteraction | SelectMenuInteraction | CommandInteraction,
