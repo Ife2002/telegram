@@ -237,44 +237,42 @@ async function executeBuyOrder(
 }
 
 export async function handleBuyNow(
-    interaction: ButtonInteraction, 
-    tokeninfo: TokenMarketData, 
-    user: UserType, 
+    interaction: ButtonInteraction,
+    tokeninfo: TokenMarketData,
+    user: UserType,
     buyAmount: number,
-    isInitialBuy: boolean = true // Flag to handle different interaction states
+    isInitialBuy: boolean = true
 ) {
     try {
+        // Initial defer
+        if (isInitialBuy && !interaction.deferred && !interaction.replied) {
+            await interaction.deferUpdate().catch(console.error);
+        }
 
+        // Check balance
         const { hasBalance, currentBalance } = await hasEnoughBalance(
-            connection, 
-            user.walletId, 
+            connection,
+            user.walletId,
             buyAmount
         );
 
-        //fetch priority
-    
         if (!hasBalance) {
-            throw new Error(
-                `Insufficient balance. You need ${(buyAmount + 0.01)} SOL (including fees) but only have ${currentBalance.toFixed(5)} SOL`
-            );
-        }
-        
-        const platform = new DiscordAdapter(interaction);
-
-        // Only defer if this is the initial buy
-        if (isInitialBuy) {
-            if (interaction.replied || interaction.deferred) {
-                console.log('Interaction was already handled');
-                return;
-            }
-            await interaction.deferUpdate();
+            await interaction.followUp({
+                content: `Insufficient balance. You need ${(buyAmount + 0.01)} SOL (including fees) but only have ${currentBalance.toFixed(5)} SOL`,
+                ephemeral: true
+            }).catch(console.error);
+            return;
         }
 
+        // Send processing message
         await interaction.followUp({
             content: `Processing purchase for token: ${tokeninfo?.name}`,
             ephemeral: true
-        });
+        }).catch(console.error);
 
+        const platform = new DiscordAdapter(interaction);
+
+        // Execute buy order
         const { txSuccess, signatures, mintInfo } = await executeBuyOrder(
             platform,
             interaction.channelId,
@@ -293,7 +291,7 @@ export async function handleBuyNow(
 
             // Get updated balance
             const tokenAccount = await getAssociatedTokenAddress(
-                new PublicKey(tokeninfo.tokenAddress), 
+                new PublicKey(tokeninfo.tokenAddress),
                 new PublicKey(user.walletId)
             );
             const info = await getAccount(connection, tokenAccount, "processed");
@@ -303,7 +301,7 @@ export async function handleBuyNow(
             const embed = createSuccessEmbed(tokeninfo, balance, lastSignature);
             const { row1, row2, row3 } = createActionButtons(tokeninfo, lastSignature);
 
-            // Send success message
+            // Send new success message instead of editing
             const successMessage = await interaction.followUp({
                 content: `✅ Successfully purchased ${tokeninfo.symbol}!`,
                 embeds: [embed],
@@ -311,13 +309,12 @@ export async function handleBuyNow(
                 ephemeral: false
             });
 
-            // Setup collector for the new buttons
             if (successMessage instanceof Message) {
                 setupButtonCollector(successMessage, interaction, tokeninfo, user);
             }
         }
     } catch (error) {
-        handleBuyError(interaction, error);
+        await handleBuyError(interaction, error).catch(console.error);
     }
 }
 
@@ -666,7 +663,7 @@ async function refreshTokenDisplay(
 }
 
 
-function handleBuyError(interaction: ButtonInteraction, error: any) {
+async function handleBuyError(interaction: ButtonInteraction, error: any) {
     console.error('Error in buy operation:', error);
     try {
         let errorMessage = 'There was an error processing your request. Please try again.';
@@ -683,13 +680,15 @@ function handleBuyError(interaction: ButtonInteraction, error: any) {
             flags: 64 // Ephemeral flag
         };
 
+        // Return the Promise from the interaction methods
         if (!interaction.replied && !interaction.deferred) {
-            interaction.reply(options);
+            return await interaction.reply(options);
         } else {
-            interaction.followUp(options);
+            return await interaction.followUp(options);
         }
     } catch (followUpError) {
         console.error('Failed to send error message:', followUpError);
+        throw followUpError; // Re-throw to allow for catch chaining
     }
 }
 
