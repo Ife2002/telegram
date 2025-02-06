@@ -70,7 +70,7 @@ export async function handleExportWallet(
             } catch (error) {
                 console.error('Error deleting credentials message:', error);
             }
-        }, 2 * 60 * 1000); 
+        }, 5 * 60 * 1000); 
 
     } catch (error) {
         console.error('Error in handleExportWallet:', error);
