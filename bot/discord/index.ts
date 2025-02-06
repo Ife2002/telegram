@@ -13,6 +13,7 @@ import { DataSource } from 'typeorm';
 import { User } from '../src/user/entities/user.entity';
 import { UserSettings } from '../src/user/entities/user-settings.entity';
 import { UserBuddy } from '../src/user/entities/user-buddy.entity';
+import { handleExportWallet, handleNewUserWelcome } from './utils/wallet-export-utils';
 
 const AppDataSource = new DataSource({
     type: 'postgres',
@@ -100,21 +101,45 @@ async function startBot() {
             }
         }
 
-        // Rest of your event handlers using client.userService instead of UserRepository
+        // Rest of your event handlers
         client.on(Events.InteractionCreate, async interaction => {
-            if (!interaction.isChatInputCommand()) return;
-
-            const command = client.commands.get(interaction.commandName);
-            if (!command) return;
-
+            // Add check for button interactions
+            if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
+        
             try {
-                const { user } = await client.userService.getOrCreateUserForDiscord(
-                    interaction.user.id, 
-                    interaction
-                );
-                
-                await command.execute(interaction, user);
+                // Handle button interactions - ADD THIS SECTION
+                if (interaction.isButton()) {
+                    if (interaction.customId === 'export_wallet') {
+                        const { user } = await client.userService.getOrCreateUserForDiscord(
+                            interaction.user.id,
+                            interaction
+                        );
+                        await handleExportWallet(interaction, user, client.userService);
+                        return;
+                    }
+                }
+        
+                // Existing command handling
+                if (interaction.isChatInputCommand()) {
+                    const command = client.commands.get(interaction.commandName);
+                    if (!command) return;
+        
+                    // Modify to destructure isNew and publicKey
+                    const { user, isNew, publicKey } = await client.userService.getOrCreateUserForDiscord(
+                        interaction.user.id, 
+                        interaction
+                    );
+                    
+                    // Add new user check - ADD THIS
+                    if (isNew) {
+                        await handleNewUserWelcome(interaction, publicKey);
+                        return;
+                    }
+                    
+                    await command.execute(interaction, user);
+                }
             } catch (error) {
+                // Error handling remains the same
                 console.error('Error:', error);
                 if (!interaction.replied) {
                     await interaction.reply({ 
@@ -126,7 +151,7 @@ async function startBot() {
         });
 
         // Your button interaction handler
-client.on(Events.InteractionCreate, async interaction => {
+       client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isButton()) return;
 
     try {
@@ -272,10 +297,10 @@ client.on(Events.InteractionCreate, async interaction => {
             });
         }
     }
-});
+       });
 
         // Your message handler
-        client.on(Events.MessageCreate, async message => {
+    client.on(Events.MessageCreate, async message => {
             if (message.author.bot) return;
 
             const content = message.content.trim();
@@ -294,7 +319,26 @@ client.on(Events.InteractionCreate, async interaction => {
                     const solBalance = await connection.getBalance(new PublicKey(publicKey));
                     const buyPriceFromConfig = await client.userService.getBuyAmount(message.author.id);
 
-                    // ... rest of your message handler code
+                    const lookupCard = createLookupComponent({
+                        tokenInfo,
+                        content,
+                        solBalance,
+                        buyPriceFromConfig
+                    });
+                     
+                    try {
+                        await message.reply({
+                            embeds: [lookupCard.embed],
+                            components: lookupCard.components
+                        });
+                    } catch (error) {
+                        console.error('Failed to reply:', error);
+                        await message.channel.send({
+                            embeds: [lookupCard.embed],
+                            components: lookupCard.components
+                        });
+                    }
+                    
                 } catch (error) {
                     console.error('Error:', error);
                     await message.reply('❌ Error fetching token information');
