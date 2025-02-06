@@ -222,7 +222,7 @@ async function handleBuyAmount(interaction: ButtonInteraction, user: UserType, u
                     
                     // Send DM confirmation
                     await message.reply({
-                        content: `✅ Default Buy amount has been set to ${defaultPriorityFee} SOL`,
+                        content: `✅ Default buy amount has been set to ${defaultPriorityFee} SOL`,
                         embeds: [updatedSettingsEmbed],
                         components: await createSettingsButtons(user, userService)
                     });
