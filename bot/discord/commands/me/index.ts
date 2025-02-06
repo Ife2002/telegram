@@ -12,6 +12,8 @@ import { ISettings, UserType } from '../../../types/user.types';
 import { Connection, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import { UserRepository } from '../../../service/user.repository';
 import { DMCollectorService, Validators } from '../../utils/dmCollectors';
+import { AvalancheDiscordClient } from '../../index';
+import { UserService } from '../../../src/user/user.service';
 
 // Command definition
 const data = new SlashCommandBuilder()
@@ -42,7 +44,7 @@ function createButtons() {
         .addComponents(settingButton);
 }
 
-function createSettingsButtons() {
+async function createSettingsButtons(user: UserType, userService: UserService) {
     const adjustBuyAmountButton = new ButtonBuilder()
         .setCustomId('adjust_buy_amount')
         .setLabel('Adjust Buy Amount')
@@ -58,15 +60,13 @@ function createSettingsButtons() {
         .setLabel('Adjust Default Priority fee')
         .setStyle(ButtonStyle.Primary);
 
+    const isNozomiEnabled = await userService.getNozomiBuyEnabled(user.discordId);
 
-    const toggleNozomiButton = new ButtonBuilder()
-        .setCustomId('toggle_nozomi')
-        .setLabel('Toggle Nozomi Buy')
-        .setStyle(ButtonStyle.Secondary);
+    const nozomiButton = createNozomiToggleButton(isNozomiEnabled)
 
     // Create two separate rows
     const firstRow = new ActionRowBuilder<ButtonBuilder>()
-        .addComponents(adjustBuyAmountButton, adjustSlippageButton, toggleNozomiButton);
+        .addComponents(adjustBuyAmountButton, adjustSlippageButton, nozomiButton);
 
     const secondRow = new ActionRowBuilder<ButtonBuilder>()
         .addComponents(adjustDefaultPriorityFee);
@@ -86,11 +86,11 @@ function createWalletEmbed(user: UserType, solBalance: number, userSetting: ISet
         .setTimestamp();
 }
 
-async function createSettingsEmbed(user: UserType) {
+async function createSettingsEmbed(user: UserType, userService: UserService) {
     
-    const slippage = await UserRepository.getUserSetting(user.discordId, "slippage");
-    const buyAmount = await UserRepository.getUserSetting(user.discordId, "buyAmount");
-    const defaultSolPriorityFeeinLamport = await UserRepository.getUserSetting(user.discordId, "defaultPriorityFee");
+    const slippage = await userService.getUserSetting(user.discordId, "slippage");
+    const buyAmount = await userService.getUserSetting(user.discordId, "buyAmount");
+    const defaultSolPriorityFeeinLamport = await userService.getUserSetting(user.discordId, "defaultPriorityFee");
 
 
     return new EmbedBuilder()
@@ -113,10 +113,11 @@ async function handleCopyAddress(interaction: ButtonInteraction, user: UserType)
     });
 }
 
-async function handleSettings(interaction: ButtonInteraction, user: UserType) {
+async function handleSettings(interaction: ButtonInteraction, user: UserType, userService: UserService) {
 
-    const settingsEmbed = await createSettingsEmbed(user);
-    const settingsButtons = createSettingsButtons();
+    const settingsEmbed = await createSettingsEmbed(user, userService);
+    const settingsButtons = await createSettingsButtons(user, userService);
+    
 
     await interaction.reply({
         embeds: [settingsEmbed],
@@ -126,7 +127,7 @@ async function handleSettings(interaction: ButtonInteraction, user: UserType) {
 }
 
 
-async function handleSlippage(interaction: ButtonInteraction, user: UserType) {
+async function handleSlippage(interaction: ButtonInteraction, user: UserType, userService: UserService) {
 
     try {
         await DMCollectorService.collectDM(interaction, {
@@ -134,14 +135,18 @@ async function handleSlippage(interaction: ButtonInteraction, user: UserType) {
             validator: Validators.percentage,
             async onSuccess(message, value) {
                 // Save the slippage value
-                await UserRepository.setSlippage(user.discordId, value);
+                await userService.updateSlippage(user.discordId, value);
                 
                 // Get the updated slippage to confirm
-                const slippage = await UserRepository.getSlippage(user.discordId);
+                const slippage = await userService.getSlippage(user.discordId);
+
+                const updatedSettingsEmbed = await createSettingsEmbed(user, userService);
                 
                 // Send confirmation: optimally it should return the setting its on currently with the sucess message
                 await message.reply({
                     content: `✅ Slippage has been set to ${slippage}%`,
+                    embeds: [updatedSettingsEmbed],
+                    components: await createSettingsButtons(user, userService)
                 });
             },
             async onError(message, error) {
@@ -160,13 +165,8 @@ async function handleSlippage(interaction: ButtonInteraction, user: UserType) {
     }
 }
 
-async function handleDefaultPriorityFee(interaction: ButtonInteraction, user: UserType) {
+async function handleDefaultPriorityFee(interaction: ButtonInteraction, user: UserType, userService: UserService) {
     try {
-        console.log('Starting handleDefaultPriorityFee, interaction state:', {
-            replied: interaction.replied,
-            deferred: interaction.deferred,
-            ephemeral: interaction.ephemeral
-        });
 
         // Remove the deferUpdate and followUp from here since DMCollectorService handles it
         await DMCollectorService.collectDM(interaction, {
@@ -175,12 +175,16 @@ async function handleDefaultPriorityFee(interaction: ButtonInteraction, user: Us
             async onSuccess(message, value) {
                 console.log('DM collector success:', { value });
                 try {
-                    await UserRepository.setDefaultPriorityFee(user.discordId, value);
-                    const defaultPriorityFee = await UserRepository.getDefaultPriorityFee(user.discordId);
+                    await userService.updateDefaultPriorityFee(user.discordId, value);
+                    const defaultPriorityFee = await userService.getDefaultPriorityFee(user.discordId);
+
+                    const updatedSettingsEmbed = await createSettingsEmbed(user, userService);
                     
                     // Send DM confirmation
                     await message.reply({
                         content: `✅ Default Priority fee has been set to ${defaultPriorityFee} SOL`,
+                        embeds: [updatedSettingsEmbed],
+                        components: await createSettingsButtons(user, userService)
                     });
 
                 } catch (error) {
@@ -192,7 +196,7 @@ async function handleDefaultPriorityFee(interaction: ButtonInteraction, user: Us
                 console.error('DM collector error:', error);
                 await message.reply(`❌ ${error}. Please enter a valid value between 0 and 0.5.`);
             },
-            timeout: 100000
+            timeout: 1000000
         });
 
     } catch (error) {
@@ -201,19 +205,107 @@ async function handleDefaultPriorityFee(interaction: ButtonInteraction, user: Us
     }
 }
 
-async function handleBuyAmount(interaction: ButtonInteraction, user: UserType) {
-          console.log('Buy Amount')
-          console.log(interaction, user)
+async function handleBuyAmount(interaction: ButtonInteraction, user: UserType, userService: UserService) {
+    try {
+
+        // Remove the deferUpdate and followUp from here since DMCollectorService handles it
+        await DMCollectorService.collectDM(interaction, {
+            prompt: "Please enter your desired Buy amount in SOL (e.g. 0.01)",
+            validator: Validators.priorityFees,
+            async onSuccess(message, value) {
+                console.log('DM collector success:', { value });
+                try {
+                    await userService.updateBuyAmount(user.discordId, value);
+                    const defaultPriorityFee = await userService.getBuyAmount(user.discordId);
+
+                    const updatedSettingsEmbed = await createSettingsEmbed(user, userService);
+                    
+                    // Send DM confirmation
+                    await message.reply({
+                        content: `✅ Default Buy amount has been set to ${defaultPriorityFee} SOL`,
+                        embeds: [updatedSettingsEmbed],
+                        components: await createSettingsButtons(user, userService)
+                    });
+
+                } catch (error) {
+                    console.error('Error in priority fee onSuccess:', error);
+                    await message.reply('❌ An error occurred while saving your priority fee.');
+                }
+            },
+            async onError(message, error) {
+                console.error('DM collector error:', error);
+                await message.reply(`❌ ${error}. Please enter a valid value between 0 and 0.5.`);
+            },
+            timeout: 1000000
+        });
+
+    } catch (error) {
+        console.error('Error in handleDefaultPriorityFee:', error);
+        // DMCollectorService handles the error responses, so we don't need to handle them here
+    }
 }
 
-async function handleToggleNozomi(interaction: ButtonInteraction, user: UserType) {
-    console.log('Nozomi')
-    console.log(interaction, user)
+async function handleToggleNozomi(interaction: ButtonInteraction, user: UserType, userService: UserService) {
+    try {
+        if (!interaction.deferred) {
+            await interaction.deferUpdate();
+        }
+
+        // Get current toggle state from user repository
+        const currentState = await userService.getNozomiBuyEnabled(user.discordId);
+        const newState = !currentState; // Toggle the state
+
+        await userService.setNozomiBuyEnabled(user.discordId, newState);
+
+        // Update the state in the database
+        const updatedSettingsEmbed = await createSettingsEmbed(user, userService);
+
+        // Get updated buttons with the new state
+        const updatedSettingsButtons = await createSettingsButtons(user, userService);
+
+
+
+
+
+        // Send confirmation message to user
+        await interaction.followUp({
+            content: newState 
+                ? '✅ Fastlane Buy has been enabled!'
+                : '❌ Fastlane Buy has been disabled!',
+            embeds: [updatedSettingsEmbed],
+            components: updatedSettingsButtons,
+            ephemeral: false
+        });
+
+    } catch (error) {
+        console.error('Error in handleToggleNozomi:', error);
+
+        // Only send error message if we haven't replied yet
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({
+                content: '❌ An error occurred while toggling Nozomi Buy status.',
+                ephemeral: true
+            });
+        } else {
+            await interaction.followUp({
+                content: '❌ An error occurred while toggling Nozomi Buy status.',
+                ephemeral: true
+            });
+        }
+    }
+}
+
+export function createNozomiToggleButton(isEnabled: boolean = false) {
+    return new ButtonBuilder()
+        .setCustomId('toggle_nozomi')
+        .setLabel(isEnabled ? 'Fastlane Buy: ON' : 'Fastlane Buy: OFF')
+        .setStyle(isEnabled ? ButtonStyle.Success : ButtonStyle.Secondary);
 }
 
 
 // Main execute function
 async function execute(interaction: ChatInputCommandInteraction, user: UserType) {
+    const userService = (interaction.client as AvalancheDiscordClient).userService;
     try {
         const connection = new Connection(process.env.HELIUS_RPC_URL);
         const solBalance = await connection.getBalance(new PublicKey(user.walletId));
@@ -254,22 +346,27 @@ async function execute(interaction: ChatInputCommandInteraction, user: UserType)
                         await handleCopyAddress(i, user);
                         break;
                     case 'settings':
-                        await handleSettings(i, user);
+                        await handleSettings(i, user, userService);
                         break;
                     case 'adjust_slippage':
-                        await handleSlippage(i, user);
+                        await handleSlippage(i, user, userService);
                         break;
                     case 'adjust_priorityFee':
-                        await handleDefaultPriorityFee(i, user);
+                        await handleDefaultPriorityFee(i, user, userService);
                         break;
                     case 'adjust_buy_amount':
-                        await handleBuyAmount(i, user);  // Add this handler
+                        await handleBuyAmount(i, user, userService);
                         break;
                     case 'toggle_nozomi':
-                        await handleToggleNozomi(i, user);  // Add this handler
+                        await handleToggleNozomi(i, user, userService);
                         break;
-                    default:
-                        console.log(`Unhandled button ID: ${i.customId}`);
+                    default:                   
+                        if (!i.deferred && !i.replied) {
+                            await i.reply({
+                                content: 'Unknown button interaction',
+                                ephemeral: true
+                            });
+                        }
                 }
             } catch (error) {
                 console.error(`Error handling button ${i.customId}:`, error);

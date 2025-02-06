@@ -1,15 +1,14 @@
-// Define specific types for settings values
 export interface ISettings {
-  buyAmount?: number;     // Amount in SOL for token purchases
-  autoBuyAmount?: number; // Amount in SOL for auto-buys
-  slippage?: number;      // Slippage percentage (e.g., 1 = 1%)
-  gasAdjustment?: number; // Gas adjustment multiplier
-  defaultPriorityFee?: number; // New field
-  buyPrices?: {          // Target buy prices for different tokens
+  buyAmount: number;     
+  autoBuyAmount: number;
+  slippage: number;      
+  gasAdjustment: number;
+  defaultPriorityFee: number;
+  nozomiBuyEnabled: boolean;
+  buyPrices: {          
     [tokenAddress: string]: number;
   };
-  lastUpdated?: Date;     // When settings were last modified
-  // Add more specific settings as needed
+  lastUpdated: Date;
 }
 
 // Constants for type safety
@@ -19,6 +18,7 @@ export const DEFAULT_SETTINGS: ISettings = {
   slippage: 5,          // Default 5%
   gasAdjustment: 1.5,   // Default 1.5x gas
   defaultPriorityFee: 0.01, // Default value in sol
+  nozomiBuyEnabled: false,
   buyPrices: {},
   lastUpdated: new Date()
 };
@@ -37,6 +37,25 @@ export interface UserType {
   buddyHash: string | null;
   dateAdded: Date;
   dateBlacklisted: Date | null;
+}
+
+// Types for migration configuration
+export interface MigrationConfig<T = any> {
+  path: string[];           // Path to the field (e.g., ['settings', 'trading', 'strategy'])
+  defaultValue: T;          // Default value for new field
+  transform?: (oldValue: any) => T;  // Optional transform function for existing data
+  validate?: (value: T) => boolean;  // Optional validation function
+  description?: string;     // Description of what the migration does
+}
+
+export interface MigrationResult {
+  total: number;           // Total records processed
+  updated: number;         // Number of records updated
+  failed: number;          // Number of failures
+  errors: Array<{         // Detailed error information
+    key: string;
+    error: string;
+  }>;
 }
 
 

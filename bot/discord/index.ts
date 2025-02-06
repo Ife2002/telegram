@@ -4,18 +4,54 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 import * as fs from 'fs';
 import { handleBuyNow, pumpService } from './commands/token/buy';
-import { UserRepository } from '../service/user.repository';
+import { UserService } from '../src/user/user.service';
 import { getTokenInfo } from '../logic/utils/astralane';
 import { Connection, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import { createLookupComponent, handleRefresh } from './components/lookUp';
 import { TokenMarketData } from '../logic/utils/types';
+import { DataSource } from 'typeorm';
+import { User } from '../src/user/entities/user.entity';
+import { UserSettings } from '../src/user/entities/user-settings.entity';
+import { UserBuddy } from '../src/user/entities/user-buddy.entity';
+
+const AppDataSource = new DataSource({
+    type: 'postgres',
+    url: process.env.DATABASE_URL,
+    entities: [User, UserSettings, UserBuddy],
+    synchronize: false, // Set this to false to prevent automatic schema updates
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    logging: true
+});
 
 
-// Extend the Client class to include commands
+export const initializeServices = async () => {
+    try {
+        console.log('Connecting to database...');
+        
+        await AppDataSource.initialize();
+        console.log("Data Source has been initialized!");
+
+        // Optionally run migrations if needed
+        // await AppDataSource.runMigrations();
+        
+        const userService = new UserService(
+            AppDataSource.getRepository(User),
+            AppDataSource.getRepository(UserSettings),
+            AppDataSource.getRepository(UserBuddy)
+        );
+
+        return userService;
+    } catch (error) {
+        console.error("Error during Data Source initialization:", error);
+        throw error;
+    }
+};
+
 export class AvalancheDiscordClient extends Client {
     commands: Collection<string, any>;
+    userService: UserService;
     
-    constructor() {
+    constructor(userService: UserService) {
         super({
             intents: [
                 GatewayIntentBits.Guilds,
@@ -31,81 +67,77 @@ export class AvalancheDiscordClient extends Client {
             partials: [Partials.Channel, Partials.Message, Partials.User]
         });
         this.commands = new Collection();
+        this.userService = userService;
     }
 }
 
-// Load environment variables from .env file
+// Load environment variables
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
-// Create a new client instance using our extended class
-const client = new AvalancheDiscordClient();
-
-// Load commands
-const foldersPath = path.join(__dirname, 'commands');
-const commandFolders = fs.readdirSync(foldersPath);
-
-for (const folder of commandFolders) {
-    const commandsPath = path.join(foldersPath, folder);
-    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.ts') || file.endsWith('.js'));
-    
-    for (const file of commandFiles) {
-        const filePath = path.join(commandsPath, file);
-        const command = require(filePath);
-        
-        if ('data' in command && 'execute' in command) {
-            client.commands.set(command.data.name, command);
-        } else {
-            console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
-        }
-    }
-}
-
-
-// Handle slash commands
-client.on(Events.InteractionCreate, async interaction => {
-    if (!interaction.isChatInputCommand()) return;
-
-    const command = client.commands.get(interaction.commandName);
-    if (!command) return;
-
+// Initialize bot with services
+async function startBot() {
     try {
-        const { user } = await UserRepository.getOrCreateUserForDiscord(
-            interaction.user.id, 
-            interaction
-        );
-        
-        await command.execute(interaction, user);
-    } catch (error) {
-        console.error('Error:', error);
-        if (!interaction.replied) {
-            await interaction.reply({ 
-                content: 'An error occurred', 
-                ephemeral: true 
-            });
+        const userService = await initializeServices();
+        const client = new AvalancheDiscordClient(userService);
+
+        // Load commands
+        const foldersPath = path.join(__dirname, 'commands');
+        const commandFolders = fs.readdirSync(foldersPath);
+
+        for (const folder of commandFolders) {
+            const commandsPath = path.join(foldersPath, folder);
+            const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.ts') || file.endsWith('.js'));
+            
+            for (const file of commandFiles) {
+                const filePath = path.join(commandsPath, file);
+                const command = require(filePath);
+                
+                if ('data' in command && 'execute' in command) {
+                    client.commands.set(command.data.name, command);
+                } else {
+                    console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
+                }
+            }
         }
-    }
-});
 
-// client.on('ready', () => {
-//     console.log(`Logged in as ${client.user.tag}!`);
-//     console.log('Enabled intents:', client.options.intents);
-// });
+        // Rest of your event handlers using client.userService instead of UserRepository
+        client.on(Events.InteractionCreate, async interaction => {
+            if (!interaction.isChatInputCommand()) return;
 
+            const command = client.commands.get(interaction.commandName);
+            if (!command) return;
 
+            try {
+                const { user } = await client.userService.getOrCreateUserForDiscord(
+                    interaction.user.id, 
+                    interaction
+                );
+                
+                await command.execute(interaction, user);
+            } catch (error) {
+                console.error('Error:', error);
+                if (!interaction.replied) {
+                    await interaction.reply({ 
+                        content: 'An error occurred', 
+                        ephemeral: true 
+                    });
+                }
+            }
+        });
 
-
+        // Your button interaction handler
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isButton()) return;
 
     try {
         const [action, address] = interaction.customId.split('_');
 
-        const { user } = await UserRepository.getOrCreateUserForDiscord(
+        const { user } = await userService.getOrCreateUserForDiscord(
             interaction.user.id,
             interaction
         );
 
-        const buyPriceFromConfig = await UserRepository.getBuyAmount(interaction.user.id);
+        const buyPriceFromConfig = await userService.getBuyAmount(interaction.user.id);
 
         // Fetch tokenInfo first for all cases that need it
         let tokenInfo: TokenMarketData;
@@ -150,8 +182,8 @@ client.on(Events.InteractionCreate, async interaction => {
             
                         try {
                             // Save the buy price
-                            await UserRepository.setUserSetting(interaction.user.id, 'buyAmount', buyPrice);
-                            const { publicKey } = await UserRepository.getOrCreateUserForDiscord(
+                            await userService.setUserSetting(interaction.user.id, 'buyAmount', buyPrice);
+                            const { publicKey } = await userService.getOrCreateUserForDiscord(
                                 message.author.id,
                                 message.channelId
                             );
@@ -242,65 +274,45 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
+        // Your message handler
+        client.on(Events.MessageCreate, async message => {
+            if (message.author.bot) return;
 
-// Handle messages (both DM and server)
-client.on(Events.MessageCreate, async message => {
-    if (message.author.bot) return;
-
-    const content = message.content.trim();
-    
-    if (content.length >= 32 && content.length <= 44) {
-
-        try {
-            // Validate it's a real public key
-            new PublicKey(content);
+            const content = message.content.trim();
             
-            const tokenInfo = await getTokenInfo(content);
-            const { publicKey } = await UserRepository.getOrCreateUserForDiscord(
-                message.author.id,
-                message.channelId
-            );
-            
-            const connection = new Connection(process.env.HELIUS_RPC_URL);
-            const solBalance = await connection.getBalance(new PublicKey(publicKey));
-            const buyPriceFromConfig = await UserRepository.getBuyAmount(message.author.id);
+            if (content.length >= 32 && content.length <= 44) {
+                try {
+                    new PublicKey(content);
+                    
+                    const tokenInfo = await getTokenInfo(content);
+                    const { publicKey } = await client.userService.getOrCreateUserForDiscord(
+                        message.author.id,
+                        message
+                    );
+                    
+                    const connection = new Connection(process.env.HELIUS_RPC_URL);
+                    const solBalance = await connection.getBalance(new PublicKey(publicKey));
+                    const buyPriceFromConfig = await client.userService.getBuyAmount(message.author.id);
 
-            const lookupCard = createLookupComponent({
-                tokenInfo,
-                content,
-                solBalance,
-                buyPriceFromConfig
-            });
-
-            try {
-                await message.reply({
-                    embeds: [lookupCard.embed],
-                    components: lookupCard.components
-                });
-            } catch (error) {
-                console.error('Failed to reply:', error);
-                await message.channel.send({
-                    embeds: [lookupCard.embed],
-                    components: lookupCard.components
-                });
+                    // ... rest of your message handler code
+                } catch (error) {
+                    console.error('Error:', error);
+                    await message.reply('❌ Error fetching token information');
+                }
             }
-            
-        } catch (error) {
-            console.error('Error:', error);
-            await message.reply('❌ Error fetching token information');
-        }
-    }
-});
+        });
 
-
-client.login(process.env.DISCORD_TOKEN)
-    .then(() => {
+        // Login and deploy commands
+        await client.login(process.env.DISCORD_TOKEN);
         console.log('Successfully logged in to Discord!');
-        return deployCommands();
-    })
-    .then(() => {
+        await deployCommands();
         console.log('Commands deployed successfully!');
-    })
-    .catch(error => {
-        console.error('Error:', error);
-    });
+
+    } catch (error) {
+        console.error('Failed to start bot:', error);
+        process.exit(1);
+    }
+}
+
+// Start the bot
+startBot();

@@ -30,6 +30,7 @@ import { toBigIntPrecise } from '../../../logic/utils';
 import { getAccount, getAssociatedTokenAddress, getMint } from '@solana/spl-token';
 import { getPriorityFees } from '../../../logic/utils/getPriorityFees';
 import { parseUINumber } from '../../../logic/utils/numberUI';
+import { User } from 'src/user/entities/user.entity';
 
 const connection = new Connection(process.env.HELIUS_RPC_URL);
 const wallet = new NodeWallet(Keypair.generate());
@@ -65,7 +66,7 @@ function calculateSellAmount(
 async function handleRefresh(
     interaction: ButtonInteraction,
     tokenInfo: TokenMarketData,
-    user: UserType
+    user: User
 ) {
     try {
     const updatedInfo = await getTokenInfo(tokenInfo.tokenAddress);
@@ -115,7 +116,7 @@ async function handleRefresh(
 async function handleCustomAmount(
     interaction: ButtonInteraction,
     tokenInfo: TokenMarketData,
-    user: UserType
+    user: User
 ) {
     const isCustomBuy = interaction.customId === 'buy_x';
     
@@ -170,7 +171,7 @@ async function handleCustomAmount(
 async function executeBuyOrder(
     platform: DiscordAdapter,
     channelId: string,
-    user: UserType,
+    user: User,
     tokenAddress: string,
     buyAmount: number
 ) {
@@ -239,7 +240,7 @@ async function executeBuyOrder(
 export async function handleBuyNow(
     interaction: ButtonInteraction,
     tokeninfo: TokenMarketData,
-    user: UserType,
+    user: User,
     buyAmount: number,
     isInitialBuy: boolean = true
 ) {
@@ -321,7 +322,7 @@ export async function handleBuyNow(
 export async function handleSellNow(
     interaction: ButtonInteraction,
     tokeninfo: TokenMarketData,
-    user: UserType,
+    user: User,
     sellPercentage: number
 ) {
     try {
@@ -483,7 +484,7 @@ function setupButtonCollector(
     message: Message,
     originalInteraction: ButtonInteraction,
     tokeninfo: TokenMarketData,
-    user: UserType
+    user: User
 ) {
     const collector = message.createMessageComponentCollector({
         componentType: ComponentType.Button,
@@ -657,7 +658,7 @@ export function createActionButtons(tokeninfo: TokenMarketData, signature: strin
 async function refreshTokenDisplay(
     interaction: ButtonInteraction,
     tokeninfo: TokenMarketData,
-    user: UserType
+    user: User
 ) {
     await handleRefresh(interaction, tokeninfo, user);
 }

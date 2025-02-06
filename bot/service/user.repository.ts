@@ -109,21 +109,34 @@ export class UserRepository {
         const userId = userData.discordId;
         const multi = redis.multi();
 
+        // Store settings separately with proper serialization
         const settingsKey = `${this.SETTINGS_PREFIX}${userId}`;
-        Object.entries(DEFAULT_SETTINGS).forEach(([key, value]) => {
+        const settings = {
+            ...DEFAULT_SETTINGS,
+            ...(userData.settings || {})
+        };
+        
+        Object.entries(settings).forEach(([key, value]) => {
             multi.hset(settingsKey, key, JSON.stringify(value));
         });
 
-        multi.hmset(`${this.USER_PREFIX}${userId}`, {
+        // Prepare user data with proper date handling
+        const userDataToStore = {
             ...userData,
             id: userId,
-            dateAdded: userData.dateAdded.toISOString(),
-            dateBlacklisted: userData.dateBlacklisted ? userData.dateBlacklisted.toISOString() : null,
-            settings: JSON.stringify(DEFAULT_SETTINGS),
-            buddies: JSON.stringify(userData.buddies),
-            encryptedPrivateKey: userData.encryptedPrivateKey,
-        });
+            dateAdded: new Date().toISOString(),
+            dateBlacklisted: null,
+            settings: JSON.stringify(settings),
+            buddies: JSON.stringify(userData.buddies || []),
+            rank: userData.rank || 1,
+            autoBuy: userData.autoBuy || false,
+            blacklisted: userData.blacklisted || false,
+        };
 
+        // Store user data
+        multi.hmset(`${this.USER_PREFIX}${userId}`, userDataToStore);
+
+        // Create discord index
         multi.hset(this.DISCORD_INDEX, userData.discordId, userId);
 
         await multi.exec();
@@ -135,18 +148,50 @@ export class UserRepository {
 }
 
 
-  static async findByDiscordId(discordId: string): Promise<UserType | null> {
-    try {
-        const userId = await redis.hget(this.DISCORD_INDEX, discordId);
-        if (!userId) return null;
+static async findByDiscordId(discordId: string): Promise<UserType | null> {
+  try {
+      const userId = await redis.hget(this.DISCORD_INDEX, discordId);
+      if (!userId) return null;
 
-        const userData = await redis.hgetall(`${this.USER_PREFIX}${userId}`);
-        return userData ? this.deserializeUser(userData) : null;
-    } catch (error) {
-        console.error('Error finding user by Discord ID:', error);
-        return null;
-    }
- }
+      // Get both user data and settings
+      const [userData, settingsData] = await Promise.all([
+          redis.hgetall(`${this.USER_PREFIX}${userId}`),
+          redis.hgetall(`${this.SETTINGS_PREFIX}${userId}`)
+      ]);
+
+      if (!userData) return null;
+
+      // Parse settings properly
+      const settings = settingsData ? 
+          Object.entries(settingsData).reduce((acc, [key, value]) => {
+              try {
+                  acc[key] = JSON.parse(value);
+              } catch {
+                  acc[key] = value;
+              }
+              return acc;
+          }, {} as ISettings) 
+          : DEFAULT_SETTINGS;
+
+      // Properly deserialize the user data
+      return {
+          ...userData,
+          settings: {
+              ...DEFAULT_SETTINGS,  // Always include defaults
+              ...settings          // Override with stored settings
+          },
+          buddies: JSON.parse(userData.buddies || '[]'),
+          rank: parseInt(userData.rank || '1'),
+          autoBuy: userData.autoBuy === 'true',
+          blacklisted: userData.blacklisted === 'true',
+          dateAdded: userData.dateAdded ? new Date(userData.dateAdded) : new Date(),
+          dateBlacklisted: userData.dateBlacklisted ? new Date(userData.dateBlacklisted) : null,
+      } as UserType;
+  } catch (error) {
+      console.error('Error finding user by Discord ID:', error);
+      return null;
+  }
+}
 
   static async findByTelegramId(telegramId: string): Promise<UserType | null> {
     try {
@@ -165,61 +210,51 @@ export class UserRepository {
   }
 
 
-  static async migrateUsersAddEncryptedKey(): Promise<void> {
+  static async migrateUserData(): Promise<void> {
     try {
         const userKeys = await redis.keys(`${this.USER_PREFIX}*`);
-        console.log(`Found ${userKeys.length} users to process`);
+        console.log(`Found ${userKeys.length} users to migrate`);
 
         for (const key of userKeys) {
             const userData = await redis.hgetall(key);
-            console.log('Processing user:', key);
-            
-            // Check if we need to convert from base64 to bs58
-            if (userData.encryptedPrivateKey && userData.encryptedPrivateKey.includes('==')) {
-                console.log('Converting base64 key to bs58:', key);
-                
-                try {
-                    // Convert from base64 to bs58
-                    const privateKeyBytes = Buffer.from(userData.encryptedPrivateKey, 'base64');
-                    const bs58PrivateKey = bs58.encode(privateKeyBytes);
-                    
-                    console.log('Generated bs58 key');
+            if (!userData) continue;
 
-                    // Update with bs58 encoded key
-                    await redis.hset(key, 'encryptedPrivateKey', bs58PrivateKey);
-                    console.log('Updated user with bs58 key:', key);
-                } catch (error) {
-                    console.error('Error converting key for user:', key, error);
-                }
-            } else if (!userData.encryptedPrivateKey) {
-                console.log('User needs new encrypted private key:', key);
-                
-                // Generate a new keypair for users without any key
-                const userkeypair = Keypair.generate();
-                const encryptedPrivateKey = bs58.encode(userkeypair.secretKey);
-                const newWalletId = userkeypair.publicKey.toBase58();
-                
-                // Use multi to ensure atomic update
-                const multi = redis.multi();
-                multi.hset(key, 'encryptedPrivateKey', encryptedPrivateKey);
-                multi.hset(key, 'walletId', newWalletId);
-                
-                await multi.exec();
-                console.log('Created new keys for user:', key);
-            }
+            const userId = key.replace(this.USER_PREFIX, '');
+            const settingsKey = `${this.SETTINGS_PREFIX}${userId}`;
 
-            // Verify the update
-            const updatedUser = await redis.hgetall(key);
-            console.log('Verification - Updated user data:', updatedUser);
+            // Ensure settings exist
+            const settings = {
+                ...DEFAULT_SETTINGS,
+                ...(userData.settings ? JSON.parse(userData.settings) : {})
+            };
+
+            // Store settings properly
+            const multi = redis.multi();
+            Object.entries(settings).forEach(([key, value]) => {
+                multi.hset(settingsKey, key, JSON.stringify(value));
+            });
+
+            // Fix user data
+            const fixedUserData = {
+                ...userData,
+                dateAdded: userData.dateAdded || new Date().toISOString(),
+                dateBlacklisted: userData.dateBlacklisted || null,
+                buddies: userData.buddies || '[]',
+                rank: userData.rank || '1',
+                autoBuy: userData.autoBuy || 'false',
+                blacklisted: userData.blacklisted || 'false'
+            };
+
+            multi.hmset(key, fixedUserData);
+            await multi.exec();
         }
 
-        console.log('Successfully migrated all users');
+        console.log('Migration completed successfully');
     } catch (error) {
-        console.error('Error in migrateUsersAddEncryptedKey:', error);
-        console.error('Full error:', error.stack);
+        console.error('Error during migration:', error);
         throw error;
     }
-  }
+}
 
   // Migration function
   static async migrateDefaultPriorityFee(): Promise<void> {
@@ -534,18 +569,18 @@ export class UserRepository {
   }
 
   // Utility methods
-  static async getAllSettings(userId: string): Promise<ISettings> {
-    const settings = await redis.hgetall(`${this.SETTINGS_PREFIX}${userId}`);
+  // static async getAllSettings(userId: string): Promise<ISettings> {
+  //   const settings = await redis.hgetall(`${this.SETTINGS_PREFIX}${userId}`);
     
-    if (!settings || Object.keys(settings).length === 0) {
-      return DEFAULT_SETTINGS;
-    }
+  //   if (!settings || Object.keys(settings).length === 0) {
+  //     return DEFAULT_SETTINGS;
+  //   }
 
-    return Object.entries(settings).reduce((acc, [key, value]) => {
-      acc[key as keyof ISettings] = JSON.parse(value);
-      return acc;
-    }, {} as ISettings);
-  }
+  //   return Object.entries(settings).reduce((acc, [key, value]) => {
+  //     acc[key as keyof ISettings] = JSON.parse(value);
+  //     return acc;
+  //   }, {} as ISettings);
+  // }
 
   static async resetSettings(userId: string): Promise<boolean> {
     const settingsKey = `${this.SETTINGS_PREFIX}${userId}`;
