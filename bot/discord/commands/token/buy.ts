@@ -41,7 +41,6 @@ const provider = new AnchorProvider(connection, wallet, {
 export const pumpService = new PumpFunSDK(provider);
 
 
-
 function calculateSellAmount(
     currentBalance: number,
     percentage: number,

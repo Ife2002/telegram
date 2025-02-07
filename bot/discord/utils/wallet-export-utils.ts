@@ -26,7 +26,7 @@ export async function handleNewUserWelcome(
         .addComponents(createExportWalletButton());
 
     await interaction.reply({
-        content: `🎉 Welcome! Your new wallet has been created.\n\nWallet Address: \`${publicKey}\`\n\nℹ️ You can export your wallet credentials now by clicking the button below. This is a one-time opportunity for security reasons.\n\n⚠️ IMPORTANT: Make sure to save your credentials in a secure location!`,
+        content: `🎉 Welcome to Avalanche! Your new wallet has been created.\n\nWallet Address: \`${publicKey}\`\n\nℹ️ You can export your wallet credentials now by clicking the button below. This is a one-time opportunity for security reasons.\n\n⚠️ IMPORTANT: Make sure to save your credentials in a secure location!`,
         components: [row],
         ephemeral: true
     });
@@ -53,7 +53,7 @@ export async function handleExportWallet(
                     `• Never share your private key with anyone\n` +
                     `• Store these credentials in a secure location\n` +
                     `• Anyone with access to your private key can control your wallet\n` +
-                    `• This message will not be available again for security reasons` + 
+                    `• This message will not be available again for security reasons\n` + 
                     `• You have only 5 mins to store the private before its deleted from the message history`
         });
 

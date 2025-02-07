@@ -103,13 +103,21 @@ async function startBot() {
 
         // Rest of your event handlers
         client.on(Events.InteractionCreate, async interaction => {
-            // Add check for button interactions
             if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
         
             try {
-                // Handle button interactions - ADD THIS SECTION
+                // Handle button interactions
                 if (interaction.isButton()) {
                     if (interaction.customId === 'export_wallet') {
+                        // Check if not in DM
+                        if (!interaction.channel?.isDMBased()) {
+                            await interaction.reply({
+                                content: 'This button only works in DMs. Please use it there instead.',
+                                ephemeral: true
+                            });
+                            return;
+                        }
+        
                         const { user } = await client.userService.getOrCreateUserForDiscord(
                             interaction.user.id,
                             interaction
@@ -119,32 +127,38 @@ async function startBot() {
                     }
                 }
         
-                // Existing command handling
+                // Command handling
                 if (interaction.isChatInputCommand()) {
                     const command = client.commands.get(interaction.commandName);
                     if (!command) return;
         
-                    // Modify to destructure isNew and publicKey
+                    // If it's not the start command and not in DMs, redirect to DMs
+                    if (interaction.commandName !== 'start' && !interaction.channel?.isDMBased()) {
+                        await interaction.reply({
+                            content: 'This command can only be used in DMs for security reasons. Please use it there instead.',
+                            ephemeral: true
+                        });
+                        return;
+                    }
+        
                     const { user, isNew, publicKey } = await client.userService.getOrCreateUserForDiscord(
-                        interaction.user.id, 
+                        interaction.user.id,
                         interaction
                     );
-                    
-                    // Add new user check - ADD THIS
+        
                     if (isNew) {
                         await handleNewUserWelcome(interaction, publicKey);
                         return;
                     }
-                    
+        
                     await command.execute(interaction, user);
                 }
             } catch (error) {
-                // Error handling remains the same
                 console.error('Error:', error);
                 if (!interaction.replied) {
-                    await interaction.reply({ 
-                        content: 'An error occurred', 
-                        ephemeral: true 
+                    await interaction.reply({
+                        content: 'An error occurred',
+                        ephemeral: true
                     });
                 }
             }
@@ -301,6 +315,7 @@ async function startBot() {
 
         // Your message handler
     client.on(Events.MessageCreate, async message => {
+            if (!message.channel.isDMBased()) return;
             if (message.author.bot) return;
 
             const content = message.content.trim();
