@@ -133,7 +133,7 @@ async function startBot() {
         
                     await command.execute(interaction, user);
                 }
-                
+
                 // Handle button interactions
                 if (interaction.isButton()) {
                     if (interaction.customId === 'export_wallet') {
@@ -169,6 +169,8 @@ async function startBot() {
 
         // Your button interaction handler
        client.on(Events.InteractionCreate, async interaction => {
+
+            const userService = (interaction.client as AvalancheDiscordClient).userService;
             if (!interaction.isButton()) return;
 
                 try {
@@ -191,6 +193,7 @@ async function startBot() {
                         case 'buyNow':
                             await handleBuyNow(
                                 interaction, 
+                                userService,
                                 tokenInfo,
                                 user,
                                 buyPriceFromConfig
@@ -278,6 +281,7 @@ async function startBot() {
             case 'buy1': 
                 await handleBuyNow(
                     interaction, 
+                    userService,
                     tokenInfo,
                     user,
                     1
@@ -287,6 +291,7 @@ async function startBot() {
             case 'buy10': 
                 await handleBuyNow(
                     interaction, 
+                    userService,
                     tokenInfo,
                     user,
                     0.1

@@ -1,3 +1,4 @@
+// add slippage and default fee params in raydium buy and sell...
 import { 
     SlashCommandBuilder, 
     ButtonBuilder, 
@@ -25,12 +26,14 @@ import { UserType } from 'types/user.types';
 import { getSmartMint } from '../../../logic/utils/getSmartMint';
 import { buy as raydiumBuy } from '../../../raydium-sdk';
 import { sell as raydiumSell } from '../../../raydium-sdk';
-import { UserRepository } from '../../../service/user.repository';
+// import { UserRepository } from '../../../service/user.repository';
 import { toBigIntPrecise } from '../../../logic/utils';
 import { getAccount, getAssociatedTokenAddress, getMint } from '@solana/spl-token';
 import { getPriorityFees } from '../../../logic/utils/getPriorityFees';
 import { parseUINumber } from '../../../logic/utils/numberUI';
 import { User } from 'src/user/entities/user.entity';
+import { AvalancheDiscordClient } from 'discord';
+import { UserService } from 'src/user/user.service';
 
 const connection = new Connection(process.env.HELIUS_RPC_URL);
 const wallet = new NodeWallet(Keypair.generate());
@@ -39,7 +42,6 @@ const provider = new AnchorProvider(connection, wallet, {
 });
 
 export const pumpService = new PumpFunSDK(provider);
-
 
 function calculateSellAmount(
     currentBalance: number,
@@ -115,7 +117,8 @@ async function handleRefresh(
 async function handleCustomAmount(
     interaction: ButtonInteraction,
     tokenInfo: TokenMarketData,
-    user: User
+    user: User,
+    userService: UserService,
 ) {
     const isCustomBuy = interaction.customId === 'buy_x';
     
@@ -153,7 +156,7 @@ async function handleCustomAmount(
             }
 
             if (isCustomBuy) {
-                await handleBuyNow(interaction, tokenInfo, user, amount);
+                await handleBuyNow(interaction, userService, tokenInfo, user, amount);
             } else {
                 // TODO: Implement handleSellNow
                 await modalSubmission.reply({
@@ -172,7 +175,8 @@ async function executeBuyOrder(
     channelId: string,
     user: User,
     tokenAddress: string,
-    buyAmount: number
+    buyAmount: number,
+    userService: UserService,
 ) {
 
     const { hasBalance, currentBalance } = await hasEnoughBalance(
@@ -196,13 +200,16 @@ async function executeBuyOrder(
     let txSuccess = false;
     let signatures: string[] = [];
 
-    const slippage = await UserRepository.getUserSetting(user.discordId, "slippage");
-
     // Fetch dynamic priority fees from Raydium
     const priorityFees = await getPriorityFees();
 
     // this is basically the nozomi tip
-    const defaultPriorityFee = await UserRepository.getDefaultPriorityFee(user.discordId);
+    const defaultPriorityFee = await userService.getDefaultPriorityFee(user.discordId);
+
+    const slippage = await userService.getSlippage(user.discordId) * 100;
+
+    // Math round is tech debt
+    const slippageBigInt = BigInt(Math.round(slippage));
 
     if (shouldUsePump) {
         const result = await pumpService.buy(
@@ -211,7 +218,7 @@ async function executeBuyOrder(
             Keypair.fromSecretKey(bs58.decode(user.encryptedPrivateKey)),
             mint,
             buyAmountLamports,
-            3000n,
+            slippageBigInt,
             defaultPriorityFee,
             priorityFees
         );
@@ -238,10 +245,11 @@ async function executeBuyOrder(
 
 export async function handleBuyNow(
     interaction: ButtonInteraction,
+    userService: UserService,
     tokeninfo: TokenMarketData,
     user: User,
     buyAmount: number,
-    isInitialBuy: boolean = true
+    isInitialBuy: boolean = true,
 ) {
     try {
         // Initial defer
@@ -278,7 +286,8 @@ export async function handleBuyNow(
             interaction.channelId,
             user,
             tokeninfo?.tokenAddress,
-            buyAmount
+            buyAmount, 
+            userService,
         );
 
         if (txSuccess && signatures.length > 0) {
@@ -322,7 +331,8 @@ export async function handleSellNow(
     interaction: ButtonInteraction,
     tokeninfo: TokenMarketData,
     user: User,
-    sellPercentage: number
+    sellPercentage: number,
+    userService: UserService,
 ) {
     try {
         // First defer the update
@@ -356,10 +366,18 @@ export async function handleSellNow(
             const account = await pumpService.getBondingCurveAccount(
                 new PublicKey(tokeninfo.tokenAddress)
             );
+
             const shouldUsePump = account && !account.complete;
 
+            const priorityFees = await getPriorityFees();
+
             // basically the nozomi tip
-            const defaultPriorityFee = await UserRepository.getDefaultPriorityFee(user.discordId);
+            const defaultPriorityFee = await userService.getDefaultPriorityFee(user.discordId);
+
+            const slippage = await userService.getSlippage(user.discordId) * 100;
+
+            // Math round is tech debt
+            const slippageBigInt = BigInt(Math.round(slippage));
 
             if (shouldUsePump) {
                 await discordPlatform.sendMessage(
@@ -373,13 +391,10 @@ export async function handleSellNow(
                     Keypair.fromSecretKey(bs58.decode(user.encryptedPrivateKey)),
                     new PublicKey(tokeninfo.tokenAddress),
                     sellAmountBN,
-                    3000n,
+                    slippageBigInt,
                     defaultPriorityFee,
-                    {
-                        unitLimit: 300000,
-                        unitPrice: 300000,
-                    }
-                );
+                    priorityFees
+                  );
 
                 // If we have a signature, consider it worth checking
                 if (result.signature) {
@@ -491,6 +506,9 @@ function setupButtonCollector(
     });
 
     collector.on('collect', async (buttonInteraction: ButtonInteraction) => {
+
+        const userService = (buttonInteraction.client as AvalancheDiscordClient).userService;
+        
         if (buttonInteraction.user.id !== originalInteraction.user.id) {
             await buttonInteraction.reply({
                 content: 'This button is not for you!',
@@ -506,7 +524,7 @@ function setupButtonCollector(
             const amountNum = parseInt(amount);
 
             if (action === 'buy' && !isNaN(amountNum)) {
-                const buyPriceFromConfig = await UserRepository.getBuyAmount(buttonInteraction.user.id);
+                const buyPriceFromConfig = await userService.getBuyAmount(buttonInteraction.user.id);
                 const buyAmount = (buyPriceFromConfig * amountNum) / 100;
                 const platform = new DiscordAdapter(buttonInteraction);
 
@@ -515,7 +533,8 @@ function setupButtonCollector(
                     buttonInteraction.channelId,
                     user,
                     tokenAddress,
-                    buyAmount
+                    buyAmount,
+                    userService
                 );
 
                 if (result.txSuccess) {
@@ -525,7 +544,7 @@ function setupButtonCollector(
 
             if (action === 'sell') {
                 try {
-                    await handleSellNow(buttonInteraction, tokeninfo, user, amountNum);
+                    await handleSellNow(buttonInteraction, tokeninfo, user, amountNum, userService);
                 } catch (error) {
                     console.error('Error handling sell:', error);
                     await buttonInteraction.followUp({
@@ -536,7 +555,7 @@ function setupButtonCollector(
             }
 
             if (amount === 'x') {
-                await handleCustomAmount(buttonInteraction, tokeninfo, user);
+                await handleCustomAmount(buttonInteraction, tokeninfo, user, userService);
             }
 
             if (action === 'refresh') {
@@ -699,19 +718,10 @@ async function hasEnoughBalance(
     requiredAmount: number
 ): Promise<{hasBalance: boolean, currentBalance: number}> {
     try {
-        const MAX_TRANSACTION_FEE = 0.000005; // Maximum Solana tx fee in SOL
+        const MAX_TRANSACTION_FEE = 0.5; // Maximum Solana tx fee in SOL - Pull from nozomi, use default priority fee and 
         const balance = await connection.getBalance(new PublicKey(walletId));
         const balanceInSOL = balance / LAMPORTS_PER_SOL;
         const requiredWithFee = requiredAmount + MAX_TRANSACTION_FEE;
-        
-        // console.log('Balance check details:', {
-        //     walletBalance: balanceInSOL,
-        //     requiredAmount: requiredAmount,
-        //     requiredWithFee,
-        //     maxTxFee: MAX_TRANSACTION_FEE,
-        //     rawBalance: balance,
-        //     rawRequired: requiredAmount * LAMPORTS_PER_SOL
-        // });
 
         return {
             hasBalance: balanceInSOL >= requiredWithFee,
