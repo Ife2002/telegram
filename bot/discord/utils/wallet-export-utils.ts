@@ -22,14 +22,31 @@ export async function handleNewUserWelcome(
     interaction: CommandInteraction, 
     publicKey: string
 ) {
-    const row = new ActionRowBuilder<MessageActionRowComponentBuilder>()
-        .addComponents(createExportWalletButton());
+    try {
+        // Create DM channel first
+        const dmChannel = await interaction.user.createDM();
 
-    await interaction.reply({
-        content: `🎉 Welcome to Avalanche! Your new wallet has been created.\n\nWallet Address: \`${publicKey}\`\n\nℹ️ You can export your wallet credentials now by clicking the button below. This is a one-time opportunity for security reasons.\n\n⚠️ IMPORTANT: Make sure to save your credentials in a secure location!`,
-        components: [row],
-        ephemeral: true
-    });
+        // Send welcome message with export button in DM
+        const row = new ActionRowBuilder<MessageActionRowComponentBuilder>()
+            .addComponents(createExportWalletButton());
+
+        await dmChannel.send({
+            content: `🎉 Welcome to Avalanche! Your new wallet has been created.\n\nWallet Address: \`${publicKey}\`\n\nℹ️ You can export your wallet credentials now by clicking the button below. This is a one-time opportunity for security reasons.\n\n⚠️ IMPORTANT: Make sure to save your credentials in a secure location!`,
+            components: [row]
+        });
+
+        // Reply in the original channel
+        await interaction.reply({
+            content: "I've sent you information on how to set this up in ypur DMs. Please check your Direct Messages.",
+            ephemeral: true
+        });
+    } catch (error) {
+        console.error('Error in handleNewUserWelcome:', error);
+        await interaction.reply({
+            content: "❌ Unable to send welcome message in DMs. Please enable DMs from server members and try again.",
+            ephemeral: true
+        });
+    }
 }
 
 export async function handleExportWallet(
@@ -54,12 +71,12 @@ export async function handleExportWallet(
                     `• Store these credentials in a secure location\n` +
                     `• Anyone with access to your private key can control your wallet\n` +
                     `• This message will not be available again for security reasons\n` + 
-                    `• You have only 5 mins to store the private before its deleted from the message history`
+                    `• You have only 5 mins to store the private key before its deleted from the message history`
         });
 
         // Update the original interaction to remove the export button
         await interaction.update({
-            content: '✅ Wallet credentials have been sent to your DMs! Check your direct messages.\n\n⚠️ Remember to save them in a secure location!',
+            content: '⚠️ Remember to save your keys in a secure location!',
             components: [] // Remove the export button after use
         });
 

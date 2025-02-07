@@ -207,7 +207,6 @@ async function handleDefaultPriorityFee(interaction: ButtonInteraction, user: Us
 
 async function handleBuyAmount(interaction: ButtonInteraction, user: UserType, userService: UserService) {
     try {
-
         // Remove the deferUpdate and followUp from here since DMCollectorService handles it
         await DMCollectorService.collectDM(interaction, {
             prompt: "Please enter your desired Buy amount in SOL (e.g. 0.01)",

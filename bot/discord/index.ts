@@ -106,27 +106,7 @@ async function startBot() {
             if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
         
             try {
-                // Handle button interactions
-                if (interaction.isButton()) {
-                    if (interaction.customId === 'export_wallet') {
-                        // Check if not in DM
-                        if (!interaction.channel?.isDMBased()) {
-                            await interaction.reply({
-                                content: 'This button only works in DMs. Please use it there instead.',
-                                ephemeral: true
-                            });
-                            return;
-                        }
-        
-                        const { user } = await client.userService.getOrCreateUserForDiscord(
-                            interaction.user.id,
-                            interaction
-                        );
-                        await handleExportWallet(interaction, user, client.userService);
-                        return;
-                    }
-                }
-        
+
                 // Command handling
                 if (interaction.isChatInputCommand()) {
                     const command = client.commands.get(interaction.commandName);
@@ -153,6 +133,29 @@ async function startBot() {
         
                     await command.execute(interaction, user);
                 }
+                
+                // Handle button interactions
+                if (interaction.isButton()) {
+                    if (interaction.customId === 'export_wallet') {
+                        // Check if not in DM
+                        if (!interaction.channel?.isDMBased()) {
+                            await interaction.reply({
+                                content: 'This button only works in DMs. Please use it there instead.',
+                                ephemeral: true
+                            });
+                            return;
+                        }
+        
+                        const { user } = await client.userService.getOrCreateUserForDiscord(
+                            interaction.user.id,
+                            interaction
+                        );
+                        await handleExportWallet(interaction, user, client.userService);
+                        return;
+                    }
+                }
+        
+                
             } catch (error) {
                 console.error('Error:', error);
                 if (!interaction.replied) {
@@ -166,102 +169,102 @@ async function startBot() {
 
         // Your button interaction handler
        client.on(Events.InteractionCreate, async interaction => {
-    if (!interaction.isButton()) return;
+            if (!interaction.isButton()) return;
 
-    try {
-        const [action, address] = interaction.customId.split('_');
-
-        const { user } = await userService.getOrCreateUserForDiscord(
-            interaction.user.id,
-            interaction
-        );
-
-        const buyPriceFromConfig = await userService.getBuyAmount(interaction.user.id);
-
-        // Fetch tokenInfo first for all cases that need it
-        let tokenInfo: TokenMarketData;
-        if (['buyNow', 'buy1', 'buy10', 'refresh'].includes(action)) {
-            tokenInfo = await getTokenInfo(address);
-        }
-
-        switch (action) {
-            case 'buyNow':
-                await handleBuyNow(
-                    interaction, 
-                    tokenInfo,
-                    user,
-                    buyPriceFromConfig
-                );
-                console.log(`buying ${tokenInfo?.tokenAddress} for ${interaction.user.username} now`)
-                break;
-            case 'setBuyPrice':
                 try {
+                    const [action, address] = interaction.customId.split('_');
 
-                    await interaction.deferUpdate();
-            
-                    // Send DM to user
-                    const dmChannel = await interaction.user.createDM();
-                    await dmChannel.send("Please enter your desired buy price in SOL (e.g., 0.1)");
+                    const { user } = await userService.getOrCreateUserForDiscord(
+                        interaction.user.id,
+                        interaction
+                    );
 
-                    // Create a message collector for the DM
-                    const collector = dmChannel.createMessageCollector({ 
-                        filter: m => !m.author.bot,
-                        time: 60000, // 1 minute timeout
-                        max: 1 
-                    });
-            
-                    collector.on('collect', async (message) => {
-                        const buyPrice = parseFloat(message.content);
-            
-                        // Validate the input
-                        if (isNaN(buyPrice) || buyPrice <= 0) {
-                            await message.reply('Invalid input. Please enter a valid number greater than 0. Try setting the buy price again.');
-                            return;
-                        }
-            
-                        try {
-                            // Save the buy price
-                            await userService.setUserSetting(interaction.user.id, 'buyAmount', buyPrice);
-                            const { publicKey } = await userService.getOrCreateUserForDiscord(
-                                message.author.id,
-                                message.channelId
-                            );
-                            
-                            const connection = new Connection(process.env.HELIUS_RPC_URL);
-                            const solBalance = await connection.getBalance(new PublicKey(publicKey));
+                    const buyPriceFromConfig = await userService.getBuyAmount(interaction.user.id);
 
-                            const lookupCard = createLookupComponent({
+                    // Fetch tokenInfo first for all cases that need it
+                    let tokenInfo: TokenMarketData;
+                    if (['buyNow', 'buy1', 'buy10', 'refresh'].includes(action)) {
+                        tokenInfo = await getTokenInfo(address);
+                    }
+
+                    switch (action) {
+                        case 'buyNow':
+                            await handleBuyNow(
+                                interaction, 
                                 tokenInfo,
-                                content: message.content,
-                                solBalance,
+                                user,
                                 buyPriceFromConfig
-                            });
-
-
+                            );
+                            console.log(`buying ${tokenInfo?.tokenAddress} for ${interaction.user.username} now`)
+                            break;
+                        case 'setBuyPrice':
                             try {
-                                await message.reply({
-                                    embeds: [lookupCard.embed],
-                                    components: lookupCard.components
+
+                                await interaction.deferUpdate();
+                        
+                                // Send DM to user
+                                const dmChannel = await interaction.user.createDM();
+                                await dmChannel.send("Please enter your desired buy price in SOL (e.g., 0.1)");
+
+                                // Create a message collector for the DM
+                                const collector = dmChannel.createMessageCollector({ 
+                                    filter: m => !m.author.bot,
+                                    time: 60000, // 1 minute timeout
+                                    max: 1 
                                 });
-                            } catch (error) {
-                                console.error('Failed to reply:', error);
-                                await message.reply({
-                                    embeds: [lookupCard.embed],
-                                    components: lookupCard.components
+                        
+                                collector.on('collect', async (message) => {
+                                    const buyPrice = parseFloat(message.content);
+                        
+                                    // Validate the input
+                                    if (isNaN(buyPrice) || buyPrice <= 0) {
+                                        await message.reply('Invalid input. Please enter a valid number greater than 0. Try setting the buy price again.');
+                                        return;
+                                    }
+                        
+                                    try {
+                                        // Save the buy price
+                                        await userService.setUserSetting(interaction.user.id, 'buyAmount', buyPrice);
+                                        const { publicKey } = await userService.getOrCreateUserForDiscord(
+                                            message.author.id,
+                                            message.channelId
+                                        );
+                                        
+                                        const connection = new Connection(process.env.HELIUS_RPC_URL);
+                                        const solBalance = await connection.getBalance(new PublicKey(publicKey));
+
+                                        const lookupCard = createLookupComponent({
+                                            tokenInfo,
+                                            content: message.content,
+                                            solBalance,
+                                            buyPriceFromConfig
+                                        });
+
+
+                                        try {
+                                            await message.reply({
+                                                embeds: [lookupCard.embed],
+                                                components: lookupCard.components
+                                            });
+                                        } catch (error) {
+                                            console.error('Failed to reply:', error);
+                                            await message.reply({
+                                                embeds: [lookupCard.embed],
+                                                components: lookupCard.components
+                                            });
+                                        }
+                                    } catch (error) {
+                                        console.error('Error saving buy price:', error);
+                                        await message.reply('❌ Failed to save buy price. Please try again.');
+                                    }
                                 });
-                            }
-                        } catch (error) {
-                            console.error('Error saving buy price:', error);
-                            await message.reply('❌ Failed to save buy price. Please try again.');
-                        }
-                    });
-            
-                    collector.on('end', collected => {
-                        if (collected.size === 0) {
-                            interaction.user.send('Time expired. Please try setting the buy price again.');
-                        }
-                    });
-            
+                        
+                                collector.on('end', collected => {
+                                    if (collected.size === 0) {
+                                        interaction.user.send('Time expired. Please try setting the buy price again.');
+                                    }
+                                });
+                        
                 } catch (error) {
                     console.error('Error in setBuyPrice:', error);
                     if (!interaction.replied) {
