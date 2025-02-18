@@ -8,6 +8,7 @@ import TelegramBot from 'node-telegram-bot-api';
 import { MessagePlatform } from 'lib/utils';
 import { UserRepository } from 'service/user.repository';
 import { Helius } from 'helius-sdk';
+import { TransactionService } from './transactionService';
 
 export async function swap(platform: MessagePlatform, chatId: string | number, {
   connection,
@@ -23,6 +24,7 @@ export async function swap(platform: MessagePlatform, chatId: string | number, {
   try {
 
     const helius = new Helius(process.env.HELIUS_KEY)
+    const transactionService = new TransactionService(connection, helius.rpc);
 
     // Check if input/output is SOL
     const isInputSol = inputMint === NATIVE_MINT.toBase58();
@@ -111,113 +113,14 @@ export async function swap(platform: MessagePlatform, chatId: string | number, {
       }
     } else {
       // Handle versioned transactions
-      // Handle versioned transactions
       for (const tx of allTransactions) {
-        let retryCount = 0;
-        const maxRetries = 3;
-        
-        while (retryCount < maxRetries) {
-          try {
-            // Get latest blockhash BEFORE signing
-            const { lastValidBlockHeight, blockhash } = await connection.getLatestBlockhash({
-              commitment: 'finalized'
-            });
-
-            const transaction = tx as VersionedTransaction;
-
-            const message = transaction.message;
-
-            // First, get all lookup tables
-            const lookupTableAccounts = message.addressTableLookups.length > 0 
-            ? (await Promise.all(
-                message.addressTableLookups.map(async (lookup) => {
-                  const response = await connection.getAddressLookupTable(lookup.accountKey);
-                  return response.value;
-                })
-              )).filter((account): account is AddressLookupTableAccount => account !== null)
-            : [];
-
-                // Resolve all account keys (including those from lookup tables)
-            const accountKeys = message.getAccountKeys({
-              addressLookupTableAccounts: lookupTableAccounts
-            });
-
-          // Now create instructions using the complete account keys
-          let instructions = message.compiledInstructions.map((ix, index) => {
-
-          const keys = ix.accountKeyIndexes.map(idx => {
-            const pubkey = accountKeys.get(idx);
-            if (!pubkey) {
-              console.error(`Missing pubkey for index ${idx} in instruction ${index}`);
-              throw new Error(`Invalid account index ${idx} in instruction ${index}`);
-            }
-            return {
-              pubkey,
-              isSigner: message.isAccountSigner(idx),
-              isWritable: message.isAccountWritable(idx)
-            };
-          });
-
-          return new TransactionInstruction({
-            programId: accountKeys.get(ix.programIdIndex),
-            keys,
-            data: Buffer.from(ix.data)
-          });
-        });
-
-        // Filter out ComputeBudgetProgram instructions
-        const COMPUTE_BUDGET_ID = new PublicKey('ComputeBudget111111111111111111111111111111');
-        instructions = instructions.filter(ix => !ix.programId.equals(COMPUTE_BUDGET_ID));
-
-            // Send using Helius
-            const txId = await helius.rpc.sendSmartTransaction(
-              instructions,
-              [owner],
-              lookupTableAccounts,
-              {
-                skipPreflight: true,
-                maxRetries: 0,
-                preflightCommitment: 'confirmed'
-              }
-            );
-
-            platform.sendMessage(chatId, `🟡 Transaction sent ${ retryCount > 0? "again" : ""}, waiting for confirmation: ${txId}`);
-
-            const startTime = Date.now();
-            const timeout = 30000; // 30 second timeout
-            let confirmed = false;
-
-            while (Date.now() - startTime < timeout) {
-              // Use connection's getSignatureStatus instead
-              const status = await connection.getSignatureStatus(txId);
-              
-              if (status?.value?.confirmationStatus === "confirmed") {
-                confirmed = true;
-                break;
-              }
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-
-            if (!confirmed) {
-              throw new Error('Transaction confirmation timeout');
-            }
-
-            await platform.sendMessage(chatId, `Transaction confirmed, https://solscan.io/tx/${txId}`);
-            signatures.push(txId);
-            break; // Exit retry loop on success
-
-          } catch (error) {
-            console.error(`Attempt ${retryCount + 1} failed:`, error);
-            
-            if (retryCount === maxRetries - 1) {
-              await platform.sendMessage(chatId, error);
-            }
-            
-            // Wait before retrying
-            await new Promise(resolve => setTimeout(resolve, 500));
-            retryCount++;
-          }
-        }
+        const txSignatures = await transactionService.processTransaction(
+          tx as VersionedTransaction,
+          owner,
+          chatId,
+          platform
+        );
+        signatures.push(...txSignatures);
       }
     }
 
