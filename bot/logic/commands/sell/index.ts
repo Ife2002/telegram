@@ -66,7 +66,7 @@ export async function sell(
 
   } else {
     await bot.sendMessage(chatId, "Executing Sell - (post-bonding phase)...");
-     return await raydiumSell(telegramPlatform, chatId, connection, mint.toBase58(), Number(sellAmountBN) , userWallet)
+     return await raydiumSell(telegramPlatform, chatId, connection, mint.toBase58(), Number(sellAmountBN) , userWallet, 10, true)
   }
 
   } catch (error) {
