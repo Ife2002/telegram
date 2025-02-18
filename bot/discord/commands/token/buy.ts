@@ -206,10 +206,14 @@ async function executeBuyOrder(
     // this is basically the nozomi tip
     const defaultPriorityFee = await userService.getDefaultPriorityFee(user.discordId);
 
-    const slippage = await userService.getSlippage(user.discordId) * 100;
+    const nozomiEnabled = await userService.getNozomiBuyEnabled(user.discordId)
+
+    const slippage = await userService.getSlippage(user.discordId)
+
+    const slippageBasisPointRounded = slippage * 100;
 
     // Math round is tech debt
-    const slippageBigInt = BigInt(Math.round(slippage));
+    const slippageBigInt = BigInt(Math.round(slippageBasisPointRounded));
 
     if (shouldUsePump) {
         const result = await pumpService.buy(
@@ -220,7 +224,8 @@ async function executeBuyOrder(
             buyAmountLamports,
             slippageBigInt,
             defaultPriorityFee,
-            priorityFees
+            priorityFees,
+            nozomiEnabled
         );
         
         txSuccess = result.success && !!result.signature;
@@ -233,7 +238,8 @@ async function executeBuyOrder(
             mint.toBase58(),
             buyAmount * Math.pow(10, mintInfo.decimals),
             Keypair.fromSecretKey(bs58.decode(user.encryptedPrivateKey)),
-            Number(slippage)
+            Number(slippage),
+            nozomiEnabled,
         );
         
         txSuccess = result.signatures.length > 0;
@@ -257,7 +263,7 @@ export async function handleBuyNow(
             await interaction.deferUpdate().catch(console.error);
         }
 
-        // Check balance
+        // Check balance - tech should check for auto nozomi tip is nozomi is enabled
         const { hasBalance, currentBalance } = await hasEnoughBalance(
             connection,
             user.walletId,
@@ -374,10 +380,14 @@ export async function handleSellNow(
             // basically the nozomi tip
             const defaultPriorityFee = await userService.getDefaultPriorityFee(user.discordId);
 
-            const slippage = await userService.getSlippage(user.discordId) * 100;
+            const slippage = await userService.getSlippage(user.discordId)
+
+            const slippageBasisPointRounded = slippage * 100;
 
             // Math round is tech debt
-            const slippageBigInt = BigInt(Math.round(slippage));
+            const slippageBigInt = BigInt(Math.round(slippageBasisPointRounded));
+
+            const nozomiEnabled = await userService.getNozomiBuyEnabled(user.discordId);
 
             if (shouldUsePump) {
                 await discordPlatform.sendMessage(
@@ -393,7 +403,8 @@ export async function handleSellNow(
                     sellAmountBN,
                     slippageBigInt,
                     defaultPriorityFee,
-                    priorityFees
+                    priorityFees,
+                    nozomiEnabled
                   );
 
                 // If we have a signature, consider it worth checking
@@ -413,7 +424,9 @@ export async function handleSellNow(
                     connection,
                     tokeninfo.tokenAddress,
                     Number(sellAmountBN),
-                    Keypair.fromSecretKey(bs58.decode(user.encryptedPrivateKey))
+                    Keypair.fromSecretKey(bs58.decode(user.encryptedPrivateKey)),
+                    slippage,
+                    nozomiEnabled,
                 );
 
                 if (result.signatures && result.signatures.length > 0) {

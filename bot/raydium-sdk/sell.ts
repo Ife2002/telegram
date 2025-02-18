@@ -18,7 +18,18 @@ dotenv.config();
  * @param {string} payer/owner - The payer address for the transaction.
  * @returns {Promise<void>} - A promise that resolves when the swap transaction is completed.
  */
-export async function sell(platform: MessagePlatform, chatId: string | number, connection: Connection, mint:string, amount:number, owner:Keypair): Promise<SwapResult> {
+export async function sell(platform: MessagePlatform, chatId: string | number, connection: Connection, mint:string, amount:number, owner:Keypair, slippage: number, nozomiEnabled: boolean): Promise<SwapResult> {
+  if(nozomiEnabled) {
+    return await swap(platform, chatId, {
+      connection,
+      owner,
+      inputMint: mint,
+      outputMint: NATIVE_MINT.toBase58(),
+      amount,
+      slippage,
+      txVersion: "V0"
+    })
+  }
   return await swapWithNozomi(platform, chatId, {
     connection, 
     nozomiApiKey: process.env.NOZOMI_API,
@@ -26,6 +37,6 @@ export async function sell(platform: MessagePlatform, chatId: string | number, c
     inputMint: mint, 
     outputMint: NATIVE_MINT.toBase58(), 
     amount, 
-    slippage: 15, 
+    slippage, 
     txVersion: 'V0'});
 }

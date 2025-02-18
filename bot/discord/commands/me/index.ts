@@ -14,6 +14,7 @@ import { UserRepository } from '../../../service/user.repository';
 import { DMCollectorService, Validators } from '../../utils/dmCollectors';
 import { AvalancheDiscordClient } from '../../index';
 import { UserService } from '../../../src/user/user.service';
+import { cleanNumber } from "../../../logic/utils/cleanTrailingZero";
 
 // Command definition
 const data = new SlashCommandBuilder()
@@ -23,7 +24,7 @@ const data = new SlashCommandBuilder()
 // util function for prirority formatting
 function formatPriorityFee(sol: number | null | undefined): string {
         if (!sol) return 'Not set';
-        return `${sol} SOL`;
+        return `${cleanNumber(sol)} SOL`;
         // Alternatively, if you want to show in SOL:
         // return `${lamports / 1e9} SOL`;
     }
@@ -97,8 +98,8 @@ async function createSettingsEmbed(user: UserType, userService: UserService) {
         .setColor('#0099ff')
         .setTitle('Your Settings')
         .addFields(
-            { name: 'Buy Amount', value: `${buyAmount || 'Not set'}` },
-            { name: 'Slippage', value: `${slippage || '2.5'}%` },
+            { name: 'Buy Amount', value: `${cleanNumber(buyAmount) || 'Not set'}` },
+            { name: 'Slippage', value: `${cleanNumber(slippage) || '2.5'}%` },
             { name: 'Default Priority Fee', value: formatPriorityFee(defaultSolPriorityFeeinLamport) },
         )
         .setTimestamp();

@@ -1,4 +1,4 @@
-import { Connection, Transaction, VersionedTransaction, PublicKey, Keypair, sendAndConfirmTransaction } from '@solana/web3.js';
+import { Connection, Transaction, VersionedTransaction, PublicKey, Keypair, sendAndConfirmTransaction, TransactionInstruction, AddressLookupTableAccount } from '@solana/web3.js';
 import { NATIVE_MINT } from '@solana/spl-token';
 import { API_URLS, getATAAddress } from '@raydium-io/raydium-sdk-v2';
 import axios from 'axios';
@@ -7,8 +7,7 @@ import { PriorityFeeResponse, SwapComputeResponse, SwapParams, SwapResult, SwapT
 import TelegramBot from 'node-telegram-bot-api';
 import { MessagePlatform } from 'lib/utils';
 import { UserRepository } from 'service/user.repository';
-
-
+import { Helius } from 'helius-sdk';
 
 export async function swap(platform: MessagePlatform, chatId: string | number, {
   connection,
@@ -22,6 +21,8 @@ export async function swap(platform: MessagePlatform, chatId: string | number, {
   txVersion = 'V0'
 }: SwapParams): Promise<SwapResult> {
   try {
+
+    const helius = new Helius(process.env.HELIUS_RPC_URL)
 
     // Check if input/output is SOL
     const isInputSol = inputMint === NATIVE_MINT.toBase58();
@@ -125,16 +126,43 @@ export async function swap(platform: MessagePlatform, chatId: string | number, {
             });
 
             const transaction = tx as VersionedTransaction;
-            // Set the blockhash on the transaction
-            transaction.message.recentBlockhash = blockhash;
-            transaction.sign([owner]);
 
-            const txId = await connection.sendTransaction(transaction, {
-              skipPreflight: true,
-              maxRetries: 3 // Add retry attempts for sending
+            const message = transaction.message;
+            const instructions = message.compiledInstructions.map(ix => {
+              return new TransactionInstruction({
+                programId: message.staticAccountKeys[ix.programIdIndex],
+                keys: ix.accountKeyIndexes.map(idx => ({
+                  pubkey: message.staticAccountKeys[idx],
+                  isSigner: message.isAccountSigner(idx),
+                  isWritable: message.isAccountWritable(idx)
+                })),
+                data: Buffer.from(ix.data)
+              });
             });
 
-            platform.sendMessage( chatId, `🟡 Transaction sent ${ retryCount > 0? "again" : ""}, waiting for confirmation: ${txId}`);
+            // Get lookup tables if present
+            const lookupTableAccounts = message.addressTableLookups.length > 0 
+            ? (await Promise.all(
+                message.addressTableLookups.map(async (lookup) => {
+                  const response = await connection.getAddressLookupTable(lookup.accountKey);
+                  return response.value;
+                })
+              )).filter((account): account is AddressLookupTableAccount => account !== null)
+            : [];
+
+            // Send using Helius
+            const txId = await helius.rpc.sendSmartTransaction(
+              instructions,
+              [owner],
+              lookupTableAccounts,
+              {
+                skipPreflight: true,
+                maxRetries: 0, // We handle retries ourselves
+                preflightCommitment: 'confirmed'
+              }
+            );
+
+            platform.sendMessage(chatId, `🟡 Transaction sent ${ retryCount > 0? "again" : ""}, waiting for confirmation: ${txId}`);
 
             // Use shorter confirmation timeout and handle errors
             const confirmation = await connection.confirmTransaction(

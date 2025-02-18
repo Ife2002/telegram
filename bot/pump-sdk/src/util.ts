@@ -1,4 +1,5 @@
 import {
+  AddressLookupTableAccount,
     Commitment,
     ComputeBudgetProgram,
     Connection,
@@ -7,6 +8,7 @@ import {
     PublicKey,
     SendTransactionError,
     Transaction,
+    TransactionInstruction,
     TransactionMessage,
     VersionedTransaction,
     VersionedTransactionResponse,
@@ -14,9 +16,12 @@ import {
   import { PriorityFee, TransactionResult } from "./types";
 import TelegramBot from "node-telegram-bot-api";
 import { MessagePlatform } from "./adapter";
+import { Helius } from "helius-sdk";
   
   export const DEFAULT_COMMITMENT: Commitment = "confirmed";
   export const DEFAULT_FINALITY: Finality = "confirmed";
+
+  const helius = new Helius(process.env.HELIUS_RPC_URL || "");
   
   export const calculateWithSlippageBuy = (
     amount: bigint,
@@ -67,13 +72,15 @@ import { MessagePlatform } from "./adapter";
             // Get fresh blockhash for each attempt
             const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
             
-            let versionedTx = await buildVersionedTx(connection, payer, newTx, commitment);
-            versionedTx.sign(signers);
+            let txData = await buildVersionedTx(connection, payer, newTx, commitment);
+            // versionedTx.sign(signers);
 
-            const sig = await connection.sendTransaction(versionedTx, {
-                skipPreflight: true,
-                maxRetries: 3
-            });
+            const sig = await sendVersionedTxWithStakedConnection(helius, connection, txData, signers, {
+              skipPreflight: true,
+              maxRetries: 0,
+              preflightCommitment: 'confirmed',
+          });
+
 
             if (!sig) {
                 throw new Error("No signature returned from transaction");
@@ -140,24 +147,94 @@ import { MessagePlatform } from "./adapter";
         error: "Max retries exceeded",
     };
 }
+
+export const sendVersionedTxWithStakedConnection = async (
+  helius: Helius,
+  connection: Connection,
+  txData: {
+      versionedTx: VersionedTransaction;
+      instructions: TransactionInstruction[];
+      lookupTableAccounts: AddressLookupTableAccount[];
+  },
+  signers: Keypair[],
+  options: {
+      skipPreflight?: boolean;
+      maxRetries?: number;
+      preflightCommitment?: Commitment;
+  } = {}
+): Promise<string> => {
+  const {
+      skipPreflight = true,
+      maxRetries = 0,
+      preflightCommitment = 'confirmed'
+  } = options;
+
+  try {
+      // Try Helius first
+      return await helius.rpc.sendSmartTransaction(
+          txData.instructions,
+          signers,
+          txData.lookupTableAccounts,
+          {
+              skipPreflight,
+              maxRetries,
+              preflightCommitment
+          }
+      );
+  } catch (heliusError) {
+      console.warn("Helius send failed, falling back to regular connection:", heliusError);
+      
+      // Sign the transaction if not already signed
+      txData.versionedTx.sign(signers);
+      
+      // Fallback to regular connection
+      return await connection.sendTransaction(txData.versionedTx, {
+          skipPreflight,
+          maxRetries,
+      });
+  }
+};
+
   
-  export const buildVersionedTx = async (
-    connection: Connection,
-    payer: PublicKey,
-    tx: Transaction,
-    commitment: Commitment = DEFAULT_COMMITMENT
-  ): Promise<VersionedTransaction> => {
-    const blockHash = (await connection.getLatestBlockhash('finalized'))
-      .blockhash;
+export const buildVersionedTx = async (
+  connection: Connection,
+  payer: PublicKey,
+  tx: Transaction,
+  commitment: Commitment = DEFAULT_COMMITMENT
+): Promise<{
+  versionedTx: VersionedTransaction;
+  instructions: TransactionInstruction[];
+  lookupTableAccounts: AddressLookupTableAccount[];
+}> => {
+  const blockHash = (await connection.getLatestBlockhash('finalized')).blockhash;
   
-    let messageV0 = new TransactionMessage({
+  // Create message from instructions
+  const message = new TransactionMessage({
       payerKey: payer,
       recentBlockhash: blockHash,
       instructions: tx.instructions,
-    }).compileToV0Message();
-  
-    return new VersionedTransaction(messageV0);
+  }).compileToV0Message();
+
+  // Create versioned transaction
+  const versionedTx = new VersionedTransaction(message);
+
+  // Get lookup tables if any exist and filter out null values
+  const lookupTableAccounts = message.addressTableLookups.length > 0 
+      ? (await Promise.all(
+          message.addressTableLookups.map(async (lookup) => {
+              const response = await connection.getAddressLookupTable(lookup.accountKey);
+              return response.value;
+          })
+        )).filter((account): account is AddressLookupTableAccount => account !== null)
+      : [];
+
+  // Return all components needed for both regular and Helius sending
+  return {
+      versionedTx,
+      instructions: tx.instructions,
+      lookupTableAccounts
   };
+};
   
   export const getTxDetails = async (
     connection: Connection,

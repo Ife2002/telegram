@@ -46,6 +46,7 @@
         "@rollup/plugin-json": "^6.1.0",
         "@solana/spl-token": "0.4.6",
         "discord.js": "^14.17.2",
+        "helius-sdk": "^1.4.2",
         "node-telegram-bot-api": "^0.66.0"
     },
     "peerDependencies": {

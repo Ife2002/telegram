@@ -137,32 +137,54 @@ import {
       slippageBasisPoints: bigint = 3000n,
       tipInSOL?: number,
       priorityFees?: PriorityFee,
+      nozomiEnabled: boolean = false,
       commitment: Commitment = DEFAULT_COMMITMENT,
       finality: Finality = DEFAULT_FINALITY
     ): Promise<TransactionResult> {
-
-      let buyTx = await this.getBuyInstructionsBySolAmount(
-        buyer.publicKey,
-        mint,
-        buyAmountSol,
-        slippageBasisPoints,
-        commitment
-      );
-  
-      let buyResults = await sendTxWithNozomi(
-        platform,
-        chatId,
-        this.nozomiConnection,
-        this.connection,
-        buyTx,
-        buyer.publicKey,
-        [buyer],
-        tipInSOL,
-        priorityFees,
-        commitment,
-        finality
-      );
-      return buyResults;
+      try {
+        const buyTx = await this.getBuyInstructionsBySolAmount(
+          buyer.publicKey,
+          mint,
+          buyAmountSol,
+          slippageBasisPoints,
+          commitment
+        );
+    
+        if (!buyTx) {
+          throw new Error('Failed to generate buy instructions');
+        }
+    
+        if (nozomiEnabled && this.nozomiConnection) {
+          return await sendTxWithNozomi(
+            platform,
+            chatId,
+            this.nozomiConnection,
+            this.connection,
+            buyTx,
+            buyer.publicKey,
+            [buyer],
+            tipInSOL,
+            priorityFees,
+            commitment,
+            finality
+          );
+        }
+    
+        return await sendTx(
+          platform,
+          chatId,
+          this.connection,
+          buyTx,
+          buyer.publicKey,
+          [buyer],
+          priorityFees,
+          commitment,
+          finality
+        );
+      } catch (error) {
+        console.error('Buy transaction failed:', error);
+        throw new Error(`Failed to execute buy transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
   
     async sell(
@@ -174,32 +196,55 @@ import {
       slippageBasisPoints: bigint = 3000n,
       tipInSOL: number,
       priorityFees?: PriorityFee,
+      nozomiEnabled: boolean = false,
       commitment: Commitment = DEFAULT_COMMITMENT,
       finality: Finality = DEFAULT_FINALITY
     ): Promise<TransactionResult> {
-      let sellTx = await this.getSellInstructionsByTokenAmount(
-        seller.publicKey,
-        mint,
-        sellTokenAmount,
-        slippageBasisPoints,
-        commitment
-      );
-  
-      let sellResults = await sendTxWithNozomi(
-        platform,
-        chatId,
-        this.nozomiConnection,
-        this.connection,
-        sellTx,
-        seller.publicKey,
-        [seller],
-        tipInSOL,
-        priorityFees,
-        commitment,
-        finality
-      );
-      
-      return sellResults;
+      try {
+          let sellTx = await this.getSellInstructionsByTokenAmount(
+            seller.publicKey,
+            mint,
+            sellTokenAmount,
+            slippageBasisPoints,
+            commitment
+          );
+
+          if (!sellTx) {
+            throw new Error('Failed to generate buy instructions');
+          }
+
+          if (nozomiEnabled && this.nozomiConnection) {
+            return await sendTxWithNozomi(
+              platform,
+              chatId,
+              this.nozomiConnection,
+              this.connection,
+              sellTx,
+              seller.publicKey,
+              [seller],
+              tipInSOL,
+              priorityFees,
+              commitment,
+              finality
+            );
+          }
+
+          return await sendTx(
+            platform,
+            chatId,
+            this.connection,
+            sellTx,
+            seller.publicKey,
+            [seller],
+            priorityFees,
+            commitment,
+            finality
+          );
+    
+    } catch (error) {
+      console.error('Buy transaction failed:', error);
+      throw new Error(`Failed to execute buy transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
     }
   
     //create token instructions

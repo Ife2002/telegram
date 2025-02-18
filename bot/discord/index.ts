@@ -24,6 +24,7 @@ const AppDataSource = new DataSource({
     logging: true
 });
 
+const userActiveTokenAddresses = new Map<string, string>();
 
 export const initializeServices = async () => {
     try {
@@ -176,6 +177,8 @@ async function startBot() {
                 try {
                     const [action, address] = interaction.customId.split('_');
 
+                    console.log(action, address);
+
                     const { user } = await userService.getOrCreateUserForDiscord(
                         interaction.user.id,
                         interaction
@@ -185,8 +188,22 @@ async function startBot() {
 
                     // Fetch tokenInfo first for all cases that need it
                     let tokenInfo: TokenMarketData;
-                    if (['buyNow', 'buy1', 'buy10', 'refresh'].includes(action)) {
-                        tokenInfo = await getTokenInfo(address);
+                    if (['buyNow', 'buy1', 'buy10', 'refresh', 'setBuyPrice'].includes(action)) {
+                        const tokenAddress = action === 'setBuyPrice' 
+                            ? userActiveTokenAddresses.get(interaction.user.id)  // Get from map for setBuyPrice
+                            : address;  // Use direct address for other actions
+
+                        if (!tokenAddress) {
+                            await interaction.reply({
+                                content: 'Please look up a token first.',
+                                ephemeral: true
+                            });
+                            return;
+                        }
+
+                        tokenInfo = await getTokenInfo(tokenAddress);
+
+                        console.log(tokenInfo);
                     }
 
                     switch (action) {
@@ -331,6 +348,13 @@ async function startBot() {
             if (content.length >= 32 && content.length <= 44) {
                 try {
                     new PublicKey(content);
+
+                    // Store address in map if it's provided (all actions except setBuyPrice)
+                    if (content.length >= 32 && content.length <= 44) {
+                        userActiveTokenAddresses.set(message.author.id, content);
+
+                        console.log(userActiveTokenAddresses.get(message.author.id))
+                    }
                     
                     const tokenInfo = await getTokenInfo(content);
                     const { publicKey } = await client.userService.getOrCreateUserForDiscord(

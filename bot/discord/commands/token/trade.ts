@@ -11,7 +11,7 @@ import {
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
-    ModalActionRowComponentBuilder
+    ModalActionRowComponentBuilder,
 } from 'discord.js';
 import { PumpFunSDK } from "pumpdotfun-sdk";
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
@@ -31,6 +31,10 @@ import { getAccount, getAssociatedTokenAddress } from '@solana/spl-token';
 import { createActionButtons } from './buy';
 import { createLookupComponent } from '../../components/lookUp';
 import { createSellCard } from '../../components/sellCard';
+import { User } from 'src/user/entities/user.entity';
+import { AvalancheDiscordClient } from 'discord';
+import { UserService } from 'src/user/user.service';
+import { getPriorityFees } from '../../../logic/utils/getPriorityFees';
 
 
 interface TokenFile {
@@ -147,8 +151,10 @@ export const data = new SlashCommandBuilder()
     .setName('trade')
     .setDescription('View and sell your tokens');
 
-    export async function execute(interaction: ChatInputCommandInteraction, user: UserType) {
+    export async function execute(interaction: ChatInputCommandInteraction, user: User) {
         try {
+            const userService = (interaction.client as AvalancheDiscordClient).userService;
+
             const OwnerTokensInfo = await fetchUserTokens(interaction, user.walletId);
             const embed = await createTokenEmbed(OwnerTokensInfo.items);
             const rows = createTokenSelectionButtons(OwnerTokensInfo.items);
@@ -192,7 +198,7 @@ export const data = new SlashCommandBuilder()
                         }
     
                         await buttonInteraction.deferReply({ ephemeral: false });
-                        await executeSellTransaction(activeToken, parseInt(value), user, buttonInteraction);
+                        await executeSellTransaction(activeToken, parseInt(value), user, buttonInteraction, userService);
                     }
                 } catch (error) {
                     console.error('Error handling button interaction:', error);
@@ -272,7 +278,7 @@ export const data = new SlashCommandBuilder()
     async function processTransactionConfirmation(
         signatures: string[],
         activeToken: ActiveToken,
-        user: UserType,
+        user: User,
         mintInfo: any,
         interaction: ButtonInteraction,
         percentage: number
@@ -308,13 +314,18 @@ export const data = new SlashCommandBuilder()
 
     async function executeRaydiumSell(
         platform: DiscordAdapter,
+        user: User,
         interaction: ButtonInteraction,
         userWallet: Keypair,
         activeToken: ActiveToken,
-        sellAmountBN: bigint
+        sellAmountBN: bigint,
+        userService: UserService
     ): Promise<string[]> {
         await platform.sendMessage(interaction.channelId, 
             `Executing Sell Order for ${activeToken?.tokenData?.content.metadata.name} on Raydium`);
+
+        const slippage = await userService.getSlippage(user.discordId);
+        const nozomiEnabled = await userService.getNozomiBuyEnabled(user.discordId);
     
         const result = await raydiumSell(
             platform,
@@ -322,7 +333,9 @@ export const data = new SlashCommandBuilder()
             connection,
             activeToken.id,
             Number(sellAmountBN),
-            userWallet
+            userWallet,
+            slippage,
+            nozomiEnabled
         );
     
         return result.signatures || [];
@@ -330,17 +343,29 @@ export const data = new SlashCommandBuilder()
 
     async function executePumpSell(
         platform: DiscordAdapter,
-        user: UserType,
+        user: User,
         interaction: ButtonInteraction,
         userWallet: Keypair,
         activeToken: ActiveToken,
-        sellAmountBN: bigint
+        sellAmountBN: bigint,
+        userService: UserService
     ): Promise<string[]> {
         await platform.sendMessage(interaction.channelId, 
             `Executing Sell Order for ${activeToken?.tokenData?.content.metadata.name} on Pump`);
 
         // basically the nozomi tip
-        const defaultPriorityFee = await UserRepository.getDefaultPriorityFee(user.discordId);    
+        const defaultPriorityFee = await userService.getDefaultPriorityFee(user.discordId);
+        
+        const slippage = await userService.getSlippage(user.discordId)
+
+        const slippageBasisPointRounded = slippage * 100;
+
+        // Math round is tech debt
+        const slippageBigInt = BigInt(Math.round(slippageBasisPointRounded));
+
+        const priorityFees = await getPriorityFees();
+
+        const nozomiEnabled = await userService.getNozomiBuyEnabled(user.discordId)
     
         const result = await pumpService.sell(
             platform,
@@ -348,12 +373,10 @@ export const data = new SlashCommandBuilder()
             userWallet,
             new PublicKey(activeToken.id),
             sellAmountBN,
-            SLIPPAGE_BASIS_POINTS,
+            slippageBigInt,
             defaultPriorityFee,
-            {
-                unitLimit: 300000,
-                unitPrice: 300000,
-            }
+            priorityFees,
+            nozomiEnabled
         );
     
         return result.signature ? [result.signature] : [];
@@ -362,8 +385,9 @@ export const data = new SlashCommandBuilder()
     async function executeSellTransaction(
         activeToken: ActiveToken,
         percentage: number,
-        user: UserType,
-        interaction: ButtonInteraction
+        user: User,
+        interaction: ButtonInteraction,
+        userService: UserService
     ): Promise<void> {
         const balanceToSell = (activeToken.balance * percentage) / 100;
         const discordPlatform = new DiscordAdapter(interaction);
@@ -375,8 +399,8 @@ export const data = new SlashCommandBuilder()
         const shouldUsePump = account && !account.complete;
     
         let signatures = await (shouldUsePump ? 
-            executePumpSell(discordPlatform, user, interaction, userWallet, activeToken, sellAmountBN) :
-            executeRaydiumSell(discordPlatform, interaction, userWallet, activeToken, sellAmountBN));
+            executePumpSell(discordPlatform, user, interaction, userWallet, activeToken, sellAmountBN, userService) :
+            executeRaydiumSell(discordPlatform, user, interaction, userWallet, activeToken, sellAmountBN, userService));
     
         await processTransactionConfirmation(signatures, activeToken, user, mintInfo, interaction, percentage);
     }

@@ -3,6 +3,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "disc
 import { TokenMarketData } from "../../logic/utils/types";
 import { parseUINumber } from "../../logic/utils/numberUI";
 import { UserRepository } from "../../service/user.repository";
+import { cleanNumber } from "../../logic/utils/cleanTrailingZero";
 
 
 
@@ -22,13 +23,13 @@ export function createLookupComponent({
     // Create embed
     const embed = new EmbedBuilder()
         .setColor('#0099ff')
-        .setTitle(`🪙 BUY ${tokenInfo.symbol.toUpperCase()} -- (${tokenInfo.name})`)
-        .setDescription(`\n\n#️⃣ *CA:* \`${content}\``)
+        .setTitle(`🪙 BUY ${tokenInfo?.symbol.toUpperCase()} -- (${tokenInfo?.name})`)
+        .setDescription(`\n\n#️⃣ *CA:* \`${tokenInfo?.tokenAddress}\``)
         .addFields(
             { name: 'ADDITIONAL INFORMATION', value: '\u200b', inline: true },
             { name: 'Balance', value: `${Number(solBalance / LAMPORTS_PER_SOL).toFixed(4)} SOL`, inline: false },
             { name: 'Price', value: `$${Number(tokenInfo?.price).toFixed(6) || "Price not found"}`, inline: false },
-            { name: 'Market Cap', value: `$${parseUINumber(Number(tokenInfo.mCap))}`, inline: false },
+            { name: 'Market Cap', value: `$${parseUINumber(Number(tokenInfo?.mCap))}`, inline: false },
         )
         .setTimestamp();
 
@@ -36,7 +37,7 @@ export function createLookupComponent({
     // Add thumbnail if image URL exists
     if (tokenInfo.imgUrl) {
         try {
-            const imageUrl = tokenInfo.imgUrl;
+            const imageUrl = tokenInfo?.imgUrl;
             if (imageUrl.startsWith('http') || imageUrl.startsWith('https')) {
                 embed.setThumbnail(imageUrl);
             }
@@ -58,11 +59,11 @@ export function createLookupComponent({
                 .setStyle(ButtonStyle.Primary),
             new ButtonBuilder()
                 .setCustomId(`buyNow_${content}`)
-                .setLabel(`Buy ${buyPriceFromConfig} SOL`)
+                .setLabel(`Buy ${cleanNumber(buyPriceFromConfig)} SOL`)
                 .setStyle(ButtonStyle.Secondary),
             new ButtonBuilder()
                 .setCustomId('setBuyPrice')
-                .setLabel(`Set Buy Price - ${buyPriceFromConfig} SOL`)
+                .setLabel(`Set Buy Price - ${cleanNumber(buyPriceFromConfig)} SOL`)
                 .setStyle(ButtonStyle.Secondary)
         );
 
