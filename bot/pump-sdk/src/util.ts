@@ -21,7 +21,7 @@ import { Helius } from "helius-sdk";
   export const DEFAULT_COMMITMENT: Commitment = "confirmed";
   export const DEFAULT_FINALITY: Finality = "confirmed";
 
-  const helius = new Helius(process.env.HELIUS_RPC_URL || "");
+  const helius = new Helius(process.env.HELIUS_KEY || "");
   
   export const calculateWithSlippageBuy = (
     amount: bigint,
@@ -171,8 +171,14 @@ export const sendVersionedTxWithStakedConnection = async (
 
   try {
       // Try Helius first
+
+      // Filter out compute budget instructions for Helius - Tech debt and latency remove compute tx fromt the origninal tx
+      const filteredInstructions = txData.instructions.filter(
+        ix => !ix.programId.equals(ComputeBudgetProgram.programId)
+      );
+
       return await helius.rpc.sendSmartTransaction(
-          txData.instructions,
+          filteredInstructions,
           signers,
           txData.lookupTableAccounts,
           {

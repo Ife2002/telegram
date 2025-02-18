@@ -1,4 +1,4 @@
-import { Connection, Transaction, VersionedTransaction, PublicKey, Keypair, sendAndConfirmTransaction, TransactionInstruction, AddressLookupTableAccount } from '@solana/web3.js';
+import { Connection, Transaction, VersionedTransaction, PublicKey, Keypair, sendAndConfirmTransaction, TransactionInstruction, AddressLookupTableAccount, ComputeBudgetProgram } from '@solana/web3.js';
 import { NATIVE_MINT } from '@solana/spl-token';
 import { API_URLS, getATAAddress } from '@raydium-io/raydium-sdk-v2';
 import axios from 'axios';
@@ -22,7 +22,7 @@ export async function swap(platform: MessagePlatform, chatId: string | number, {
 }: SwapParams): Promise<SwapResult> {
   try {
 
-    const helius = new Helius(process.env.HELIUS_RPC_URL)
+    const helius = new Helius(process.env.HELIUS_KEY)
 
     // Check if input/output is SOL
     const isInputSol = inputMint === NATIVE_MINT.toBase58();
@@ -89,8 +89,6 @@ export async function swap(platform: MessagePlatform, chatId: string | number, {
       isV0Tx ? VersionedTransaction.deserialize(txBuf) : Transaction.from(txBuf)
     );
 
-    console.log(`Total ${allTransactions.length} transactions to process`);
-
     // 6. Sign and send transactions
     const signatures: string[] = [];
 
@@ -128,19 +126,8 @@ export async function swap(platform: MessagePlatform, chatId: string | number, {
             const transaction = tx as VersionedTransaction;
 
             const message = transaction.message;
-            const instructions = message.compiledInstructions.map(ix => {
-              return new TransactionInstruction({
-                programId: message.staticAccountKeys[ix.programIdIndex],
-                keys: ix.accountKeyIndexes.map(idx => ({
-                  pubkey: message.staticAccountKeys[idx],
-                  isSigner: message.isAccountSigner(idx),
-                  isWritable: message.isAccountWritable(idx)
-                })),
-                data: Buffer.from(ix.data)
-              });
-            });
 
-            // Get lookup tables if present
+            // First, get all lookup tables
             const lookupTableAccounts = message.addressTableLookups.length > 0 
             ? (await Promise.all(
                 message.addressTableLookups.map(async (lookup) => {
@@ -150,6 +137,38 @@ export async function swap(platform: MessagePlatform, chatId: string | number, {
               )).filter((account): account is AddressLookupTableAccount => account !== null)
             : [];
 
+                // Resolve all account keys (including those from lookup tables)
+            const accountKeys = message.getAccountKeys({
+              addressLookupTableAccounts: lookupTableAccounts
+            });
+
+          // Now create instructions using the complete account keys
+          let instructions = message.compiledInstructions.map((ix, index) => {
+
+          const keys = ix.accountKeyIndexes.map(idx => {
+            const pubkey = accountKeys.get(idx);
+            if (!pubkey) {
+              console.error(`Missing pubkey for index ${idx} in instruction ${index}`);
+              throw new Error(`Invalid account index ${idx} in instruction ${index}`);
+            }
+            return {
+              pubkey,
+              isSigner: message.isAccountSigner(idx),
+              isWritable: message.isAccountWritable(idx)
+            };
+          });
+
+          return new TransactionInstruction({
+            programId: accountKeys.get(ix.programIdIndex),
+            keys,
+            data: Buffer.from(ix.data)
+          });
+        });
+
+        // Filter out ComputeBudgetProgram instructions
+        const COMPUTE_BUDGET_ID = new PublicKey('ComputeBudget111111111111111111111111111111');
+        instructions = instructions.filter(ix => !ix.programId.equals(COMPUTE_BUDGET_ID));
+
             // Send using Helius
             const txId = await helius.rpc.sendSmartTransaction(
               instructions,
@@ -157,36 +176,32 @@ export async function swap(platform: MessagePlatform, chatId: string | number, {
               lookupTableAccounts,
               {
                 skipPreflight: true,
-                maxRetries: 0, // We handle retries ourselves
+                maxRetries: 0,
                 preflightCommitment: 'confirmed'
               }
             );
 
             platform.sendMessage(chatId, `🟡 Transaction sent ${ retryCount > 0? "again" : ""}, waiting for confirmation: ${txId}`);
 
-            // Use shorter confirmation timeout and handle errors
-            const confirmation = await connection.confirmTransaction(
-              {
-                blockhash,
-                lastValidBlockHeight,
-                signature: txId,
-              },
-              'confirmed'
-            ).then(
-              result => result,
-              error => {
-                if (error.toString().includes('block height exceeded')) {
-                  throw new Error('Transaction expired');
-                }
-                throw error;
-              }
-            );
+            const startTime = Date.now();
+            const timeout = 30000; // 30 second timeout
+            let confirmed = false;
 
-            if (confirmation.value.err) {
-              throw new Error(`Transaction failed: ${confirmation.value.err}`);
+            while (Date.now() - startTime < timeout) {
+              // Use connection's getSignatureStatus instead
+              const status = await connection.getSignatureStatus(txId);
+              
+              if (status?.value?.confirmationStatus === "confirmed") {
+                confirmed = true;
+                break;
+              }
+              await new Promise(resolve => setTimeout(resolve, 1000));
             }
 
-            // If we get here, transaction was successful
+            if (!confirmed) {
+              throw new Error('Transaction confirmation timeout');
+            }
+
             await platform.sendMessage(chatId, `Transaction confirmed, https://solscan.io/tx/${txId}`);
             signatures.push(txId);
             break; // Exit retry loop on success

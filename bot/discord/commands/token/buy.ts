@@ -34,6 +34,8 @@ import { parseUINumber } from '../../../logic/utils/numberUI';
 import { User } from 'src/user/entities/user.entity';
 import { AvalancheDiscordClient } from 'discord';
 import { UserService } from 'src/user/user.service';
+import { fetchNozomiTipFloor } from '../../utils/fetchNozomiTipFloor';
+import { from } from 'rxjs';
 
 const connection = new Connection(process.env.HELIUS_RPC_URL);
 const wallet = new NodeWallet(Keypair.generate());
@@ -182,7 +184,9 @@ async function executeBuyOrder(
     const { hasBalance, currentBalance } = await hasEnoughBalance(
         connection, 
         user.walletId, 
-        buyAmount
+        buyAmount,
+        userService,
+        user
     );
 
     if (!hasBalance) {
@@ -263,11 +267,13 @@ export async function handleBuyNow(
             await interaction.deferUpdate().catch(console.error);
         }
 
-        // Check balance - tech should check for auto nozomi tip is nozomi is enabled
+        // Check balance - tech debt should check for auto nozomi tip is nozomi is enabled
         const { hasBalance, currentBalance } = await hasEnoughBalance(
             connection,
             user.walletId,
-            buyAmount
+            buyAmount,
+            userService,
+            user
         );
 
         if (!hasBalance) {
@@ -728,21 +734,48 @@ async function handleBuyError(interaction: ButtonInteraction, error: any) {
 async function hasEnoughBalance(
     connection: Connection,
     walletId: string,
-    requiredAmount: number
-): Promise<{hasBalance: boolean, currentBalance: number}> {
+    requiredAmount: number,
+    userService: UserService,
+    user: User,
+  ): Promise<{ hasBalance: boolean; currentBalance: number }> {
     try {
-        const MAX_TRANSACTION_FEE = 0.5; // Maximum Solana tx fee in SOL - Pull from nozomi, use default priority fee and 
-        const balance = await connection.getBalance(new PublicKey(walletId));
-        const balanceInSOL = balance / LAMPORTS_PER_SOL;
-        const requiredWithFee = requiredAmount + MAX_TRANSACTION_FEE;
+      // Fetch the current transaction fee from Nozomi
+      const nozomiTipFee = await fetchNozomiTipFloor();
 
-        return {
-            hasBalance: balanceInSOL >= requiredWithFee,
-            currentBalance: balanceInSOL
-        };
+      const isNozomiBuyEnabled = await userService.getNozomiBuyEnabled(user.discordId);
+      
+      // Get the wallet balance
+      const balance = await connection.getBalance(new PublicKey(walletId));
+      const balanceInSOL = balance / LAMPORTS_PER_SOL;
+
+      // optimally fetch from helius
+      const priorityFeeForSwQoS = 0.0005
+
+      // Get the appropriate fee based on whether Nozomi is enabled
+      const transactionFee = isNozomiBuyEnabled
+        ? nozomiTipFee
+        : priorityFeeForSwQoS; // priorityFeeForSwQoS for non-Nozomi transactions
+      
+      // Calculate required amount including the dynamic fee
+      const requiredWithFee = Number(requiredAmount) + Number(transactionFee);
+
+      console.log({
+        nozomiTipFee: nozomiTipFee,
+        isNozomiBuyEnabled: isNozomiBuyEnabled,
+        balanceInSOL: balanceInSOL,
+        requiredWithFee: requiredWithFee,
+        requiredAmount: requiredAmount,
+        transactionFee: transactionFee,
+        hasEnoughBalance: balanceInSOL >= requiredWithFee
+      })
+      
+      return {
+        hasBalance: balanceInSOL >= requiredWithFee,
+        currentBalance: balanceInSOL
+      };
     } catch (error) {
-        console.error('Error checking balance:', error);
-        throw new Error('Failed to check wallet balance');
+      console.error('Error checking balance:', error);
+      throw new Error('Failed to check wallet balance');
     }
-}
+  }
  

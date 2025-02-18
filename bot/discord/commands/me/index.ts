@@ -283,12 +283,12 @@ async function handleToggleNozomi(interaction: ButtonInteraction, user: UserType
         // Only send error message if we haven't replied yet
         if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({
-                content: '❌ An error occurred while toggling Nozomi Buy status.',
+                content: '❌ An error occurred while toggling Fastlane Buy status.',
                 ephemeral: true
             });
         } else {
             await interaction.followUp({
-                content: '❌ An error occurred while toggling Nozomi Buy status.',
+                content: '❌ An error occurred while toggling Fastlane Buy status.',
                 ephemeral: true
             });
         }

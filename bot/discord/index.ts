@@ -202,8 +202,6 @@ async function startBot() {
                         }
 
                         tokenInfo = await getTokenInfo(tokenAddress);
-
-                        console.log(tokenInfo);
                     }
 
                     switch (action) {
@@ -352,8 +350,6 @@ async function startBot() {
                     // Store address in map if it's provided (all actions except setBuyPrice)
                     if (content.length >= 32 && content.length <= 44) {
                         userActiveTokenAddresses.set(message.author.id, content);
-
-                        console.log(userActiveTokenAddresses.get(message.author.id))
                     }
                     
                     const tokenInfo = await getTokenInfo(content);

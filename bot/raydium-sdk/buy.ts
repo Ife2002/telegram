@@ -21,26 +21,28 @@ dotenv.config()
 export async function buy(platform: MessagePlatform, chatId: string | number, connection: Connection, mint:string, amount:number, owner:Keypair, slippage: number, nozomiEnabled: boolean = false): Promise<SwapResult> {
   /// account for their mint amount in their decimals
   if(nozomiEnabled){
-    return await swap(platform, chatId, {
-      connection,
-      owner,
-      inputMint: NATIVE_MINT.toBase58(),
-      outputMint: mint,
-      amount,
-      slippage,
+
+    return await swapWithNozomi(platform, chatId, {
+      connection, 
+      nozomiApiKey: process.env.NOZOMI_API,
+      owner, 
+      inputMint: NATIVE_MINT.toBase58(), 
+      outputMint: mint, 
+      amount, 
+      slippage, 
       txVersion: 'V0'
-    }
-    )
+    });
   }
 
-  return await swapWithNozomi(platform, chatId, {
-    connection, 
-    nozomiApiKey: process.env.NOZOMI_API,
-    owner, 
-    inputMint: NATIVE_MINT.toBase58(), 
-    outputMint: mint, 
-    amount, 
-    slippage, 
+  return await swap(platform, chatId, {
+    connection,
+    owner,
+    inputMint: NATIVE_MINT.toBase58(),
+    outputMint: mint,
+    amount,
+    slippage,
     txVersion: 'V0'
-  });
+  }
+  )
+
 }
