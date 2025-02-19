@@ -4,6 +4,7 @@ import { TokenMarketData } from "../../logic/utils/types";
 import { parseUINumber } from "../../logic/utils/numberUI";
 import { UserRepository } from "../../service/user.repository";
 import { cleanNumber } from "../../logic/utils/cleanTrailingZero";
+import { UserService } from 'src/user/user.service';
 
 
 
@@ -12,13 +13,15 @@ interface LookupOptions {
     content: string;
     solBalance: number;
     buyPriceFromConfig?: number;
+    userService: UserService
 }
 
 export function createLookupComponent({
     tokenInfo,
     content,
     solBalance,
-    buyPriceFromConfig
+    buyPriceFromConfig,
+    userService
 }: LookupOptions) {
     // Create embed
     const embed = new EmbedBuilder()
@@ -82,27 +85,28 @@ export function createLookupComponent({
     };
 }
 
-export async function handleRefresh(interaction, content, tokenInfo: TokenMarketData) {
+export async function handleRefresh(interaction, content, tokenInfo: TokenMarketData, userService: UserService) {
     try {
         // Defer the update to show loading state
         await interaction.deferUpdate();
 
         // Get fresh data
-        const { publicKey } = await UserRepository.getOrCreateUserForDiscord(
+        const { publicKey } = await userService.getOrCreateUserForDiscord(
             interaction.user.id,
             interaction.channelId
         );
         
         const connection = new Connection(process.env.HELIUS_RPC_URL);
         const solBalance = await connection.getBalance(new PublicKey(publicKey));
-        const buyPriceFromConfig = await UserRepository.getBuyAmount(interaction.user.id);
+        const buyPriceFromConfig = await userService.getBuyAmount(interaction.user.id);
 
         // Create new lookup card with fresh data
         const updatedCard = createLookupComponent({
             tokenInfo,
             content,
             solBalance,
-            buyPriceFromConfig
+            buyPriceFromConfig,
+            userService
         });
 
         // Update the message with new data

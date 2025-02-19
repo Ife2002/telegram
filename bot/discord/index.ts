@@ -255,7 +255,8 @@ async function startBot() {
                                             tokenInfo,
                                             content: message.content,
                                             solBalance,
-                                            buyPriceFromConfig
+                                            buyPriceFromConfig,
+                                            userService
                                         });
 
 
@@ -320,7 +321,8 @@ async function startBot() {
                 await handleRefresh(
                     interaction, 
                     address,
-                    tokenInfo
+                    tokenInfo,
+                    userService
                 );
                 console.log(`Refreshing ${tokenInfo.tokenAddress} for ${interaction.user.username} now`)
             break;
@@ -368,7 +370,8 @@ async function startBot() {
                         tokenInfo,
                         content,
                         solBalance,
-                        buyPriceFromConfig
+                        buyPriceFromConfig,
+                        userService
                     });
                      
                     try {

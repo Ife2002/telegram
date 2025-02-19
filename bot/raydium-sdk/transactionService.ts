@@ -155,14 +155,14 @@ import {
         const programId = accountKeys.get(ix.programIdIndex);
         
         // Debug logging
-        console.log(`Instruction ${index}:`, {
-          programId: programId.toBase58(),
-          numAccounts: ix.accountKeyIndexes.length,
-          dataLength: ix.data.length,
-          isComputeBudget: programId.equals(
-            new PublicKey('ComputeBudget111111111111111111111111111111')
-          )
-        });
+        // console.log(`Instruction ${index}:`, {
+        //   programId: programId.toBase58(),
+        //   numAccounts: ix.accountKeyIndexes.length,
+        //   dataLength: ix.data.length,
+        //   isComputeBudget: programId.equals(
+        //     new PublicKey('ComputeBudget111111111111111111111111111111')
+        //   )
+        // });
   
         return new TransactionInstruction({
           programId,
