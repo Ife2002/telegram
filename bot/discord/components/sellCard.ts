@@ -2,36 +2,39 @@ import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import { TokenMarketData } from "../../logic/utils/types";
 import { parseUINumber } from "../../logic/utils/numberUI";
+import { TokenInUserToken } from "../types/userToken.type";
 
 interface SellCardOptions {
-    tokenInfo: TokenMarketData;
+    token: TokenInUserToken;
     content: string;
     solBalance: number;
     price?: number;
 }
 
 export function createSellCard({
-    tokenInfo,
+    token,
     content,
     solBalance,
 }: SellCardOptions) {
+
+    console.log(token);
     // Create embed
     const embed = new EmbedBuilder()
         .setColor('#0099ff')
-        .setTitle(`🪙 BUY ${tokenInfo.symbol.toUpperCase()} -- (${tokenInfo.name})`)
+        .setTitle(`🪙 BUY ${token?.metadata.symbol.toUpperCase()} -- (${token.metadata.name})`)
         .setDescription(`\n\n#️⃣ *CA:* \`${content}\``)
         .addFields(
             { name: 'ADDITIONAL INFORMATION', value: '\u200b', inline: true },
             { name: 'Balance', value: `${Number(solBalance / LAMPORTS_PER_SOL).toFixed(4)} SOL`, inline: false },
-            { name: 'Price', value: `$${Number(tokenInfo?.price).toFixed(6) || "Price not found"}`, inline: false },
-            { name: 'Market Cap', value: `$${parseUINumber(Number(tokenInfo.mCap))}`, inline: false },
+            { name: 'Price', value: `$${Number(token?.token_price).toFixed(6) || "Price not found"}`, inline: false },
+            { name: 'Market Cap', value: `$${parseUINumber(Number(token?.mCap))}`, inline: false },
         )
         .setTimestamp();
 
     // Add thumbnail if image URL exists
-    if (tokenInfo.imgUrl) {
+    if (token.metadata.logo_uri) {
         try {
-            const imageUrl = tokenInfo.imgUrl;
+            const imageUrl = token.metadata.logo_uri;
             if (imageUrl.startsWith('http') || imageUrl.startsWith('https')) {
                 embed.setThumbnail(imageUrl);
             }

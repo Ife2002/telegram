@@ -35,101 +35,19 @@ import { User } from 'src/user/entities/user.entity';
 import { AvalancheDiscordClient } from 'discord';
 import { UserService } from 'src/user/user.service';
 import { getPriorityFees } from '../../../logic/utils/getPriorityFees';
-
-
-interface TokenFile {
-    uri: string;
-    cdn_uri: string;
-    mime: string;
-}
-
-interface TokenMetadata {
-    description: string;
-    name: string;
-    symbol: string;
-    token_standard: string;
-}
-
-interface TokenLinks {
-    image: string;
-}
-
-interface TokenContent {
-    $schema: string;
-    json_uri: string;
-    files: TokenFile[];
-    metadata: TokenMetadata;
-    links: TokenLinks;
-}
-
-interface TokenAuthority {
-    address: string;
-    scopes: string[];
-}
-
-interface TokenCompression {
-    eligible: boolean;
-    compressed: boolean;
-    data_hash: string;
-    creator_hash: string;
-    asset_hash: string;
-    tree: string;
-    seq: number;
-    leaf_id: number;
-}
-
-interface TokenRoyalty {
-    royalty_model: string;
-    target: null;
-    percent: number;
-    basis_points: number;
-    primary_sale_happened: boolean;
-    locked: boolean;
-}
-
-interface TokenOwnership {
-    frozen: boolean;
-    delegated: boolean;
-    delegate: null;
-    ownership_model: string;
-    owner: string;
-}
-
-interface TokenInfo {
-    balance: number;
-    supply: number;
-    decimals: number;
-    token_program: string;
-    associated_token_address: string;
-}
-
-interface TokenItem {
-    interface: string;
-    id: string;
-    content: TokenContent;
-    authorities: TokenAuthority[];
-    compression: TokenCompression;
-    grouping: any[];
-    royalty: TokenRoyalty;
-    creators: any[];
-    ownership: TokenOwnership;
-    supply: null;
-    mutable: boolean;
-    burnt: boolean;
-    token_info: TokenInfo;
-}
+import { TokenInUserToken, UserTokens } from '../../types/userToken.type';
 
 interface TokenResponse {
     total: number;
     limit: number;
     page: number;
-    items: TokenItem[];
+    items: TokenInUserToken[];
 }
 
 interface ActiveToken {
     id: string;
     balance: number;
-    tokenData: TokenItem;
+    tokenData: TokenInUserToken;
 }
 
 let wallet = new NodeWallet(Keypair.generate());
@@ -156,8 +74,8 @@ export const data = new SlashCommandBuilder()
             const userService = (interaction.client as AvalancheDiscordClient).userService;
 
             const OwnerTokensInfo = await fetchUserTokens(interaction, user.walletId);
-            const embed = await createTokenEmbed(OwnerTokensInfo.items);
-            const rows = createTokenSelectionButtons(OwnerTokensInfo.items);
+            const embed = await createTokenEmbed(OwnerTokensInfo);
+            const rows = createTokenSelectionButtons(OwnerTokensInfo);
     
             const response = await interaction.reply({
                 embeds: [embed],
@@ -183,12 +101,13 @@ export const data = new SlashCommandBuilder()
                     const [action, value] = buttonInteraction.customId.split(':');
     
                     if (action === 'select_token') {
-                        const token = OwnerTokensInfo.items.find(t => t.id === value);
+                        const token = OwnerTokensInfo.find(t => t.tokenAddress === value);
                         await handleTokenSelection(buttonInteraction, token, rows, interaction.channelId, user.walletId, user.discordId);
                     }
     
                     if (action === 'sell') {
                         const activeToken = activeTokens.get(interaction.channelId);
+
                         if (!activeToken) {
                             await buttonInteraction.reply({
                                 content: 'Please select a token first',
@@ -245,11 +164,11 @@ export const data = new SlashCommandBuilder()
     
         const embed = new EmbedBuilder()
             .setColor('#0099ff')
-            .setTitle(`💰 SOLD ${activeToken.tokenData.content.metadata.symbol} -- (${activeToken.tokenData.content.metadata.name})`)
-            .setDescription(`\`${activeToken.tokenData.id}\``)
+            .setTitle(`💰 SOLD ${activeToken.tokenData.metadata.symbol} -- (${activeToken?.tokenData?.metadata.name})`)
+            .setDescription(`\`${activeToken?.tokenData.tokenAddress}\``)
             .addFields(
-                { name: 'New Balance', value: `${updatedBalance} ${activeToken.tokenData.content.metadata.symbol}`, inline: true },
-                { name: 'Amount Sold', value: `${activeToken.balance * (percentage / 100)} ${activeToken.tokenData.content.metadata.symbol}`, inline: true },
+                { name: 'New Balance', value: `${updatedBalance} ${activeToken.tokenData?.metadata.symbol}`, inline: true },
+                { name: 'Amount Sold', value: `${activeToken.balance * (percentage / 100)} ${activeToken.tokenData?.metadata.symbol}`, inline: true },
                 { name: 'Sale %', value: `${percentage}%`, inline: true }
             )
             .addFields({
@@ -261,14 +180,14 @@ export const data = new SlashCommandBuilder()
         const { row1, row2, row3 } = createActionButtons(tokeninfo, signature);
     
         await interaction.followUp({
-            content: `✅ Successfully sold ${activeToken.tokenData.content.metadata.symbol}!`,
+            content: `✅ Successfully sold ${activeToken?.tokenData?.metadata.symbol}!`,
             embeds: [embed],
             components: [row1, row2, row3],
             ephemeral: false
         });
         } else {
             await interaction.followUp({
-                content: `✅ Successfully sold all your ${activeToken.tokenData.content.metadata.symbol}!`,
+                content: `✅ Successfully sold all your ${activeToken?.tokenData?.metadata.symbol}!`,
                 ephemeral: false
             });
         }
@@ -322,7 +241,7 @@ export const data = new SlashCommandBuilder()
         userService: UserService
     ): Promise<string[]> {
         await platform.sendMessage(interaction.channelId, 
-            `Executing Sell Order for ${activeToken?.tokenData?.content.metadata.name} on Raydium`);
+            `Executing Sell Order for ${activeToken?.tokenData?.metadata.name} on Raydium`);
 
         const slippage = await userService.getSlippage(user.discordId);
         const nozomiEnabled = await userService.getNozomiBuyEnabled(user.discordId);
@@ -351,7 +270,7 @@ export const data = new SlashCommandBuilder()
         userService: UserService
     ): Promise<string[]> {
         await platform.sendMessage(interaction.channelId, 
-            `Executing Sell Order for ${activeToken?.tokenData?.content.metadata.name} on Pump`);
+            `Executing Sell Order for ${activeToken?.tokenData?.metadata.name} on Pump`);
 
         // basically the nozomi tip
         const defaultPriorityFee = await userService.getDefaultPriorityFee(user.discordId);
@@ -390,12 +309,18 @@ export const data = new SlashCommandBuilder()
         userService: UserService
     ): Promise<void> {
         const balanceToSell = (activeToken.balance * percentage) / 100;
+
         const discordPlatform = new DiscordAdapter(interaction);
+
+
         const userWallet = Keypair.fromSecretKey(bs58.decode(user.encryptedPrivateKey));
+
         const sellAmountBN = toBigIntPrecise(balanceToSell);
     
         const account = await pumpService.getBondingCurveAccount(new PublicKey(activeToken.id));
+
         const { mintInfo } = await getSmartMint(connection, new PublicKey(activeToken.id));
+
         const shouldUsePump = account && !account.complete;
     
         let signatures = await (shouldUsePump ? 
@@ -407,28 +332,25 @@ export const data = new SlashCommandBuilder()
 
     async function handleTokenSelection(
         buttonInteraction: ButtonInteraction,
-        token: TokenItem,
+        token: TokenInUserToken,
         rows: ActionRowBuilder<ButtonBuilder>[],
         channelId: string,
         userWallet: string,
         userId: string
     ): Promise<void> {
-        const balance = token.token_info.balance / Math.pow(10, token.token_info.decimals);
+        const balance = token?.balance;
     
         activeTokens.set(channelId, {
-            id: token.id,
+            id: token.mint,
             balance: balance,
             tokenData: token
         });
-
-        const tokenInfo = await getTokenInfo(token?.id);
                     
         const connection = new Connection(process.env.HELIUS_RPC_URL);
         const solBalance = await connection.getBalance(new PublicKey(userWallet));
-        const buyPriceFromConfig = await UserRepository.getBuyAmount(userId);
     
         // content here refers to tokenAddress - tech debt
-        const sellCard = await createSellCard({ tokenInfo, content: token?.id,  solBalance});
+        const sellCard = await createSellCard({ token, content: token?.tokenAddress,  solBalance});
        // impl th e sell button in the same function
         const sellButtons = createSellButtons()
 
@@ -460,14 +382,14 @@ export const data = new SlashCommandBuilder()
             );
     }
 
-    function createTokenSelectionButtons(tokens: TokenItem[]): ActionRowBuilder<ButtonBuilder>[] {
+    function createTokenSelectionButtons(tokens: TokenInUserToken[]): ActionRowBuilder<ButtonBuilder>[] {
         const rows: ActionRowBuilder<ButtonBuilder>[] = [];
         let currentRow = new ActionRowBuilder<ButtonBuilder>();
     
         for (const token of tokens) {
             const selectButton = new ButtonBuilder()
-                .setCustomId(`select_token:${token.id}`)
-                .setLabel(`Select ${token.content.metadata.name}`)
+                .setCustomId(`select_token:${token?.tokenAddress}`)
+                .setLabel(`Select ${token?.metadata.name}`)
                 .setStyle(ButtonStyle.Secondary);
     
             if (currentRow.components.length === 5) {
@@ -484,20 +406,21 @@ export const data = new SlashCommandBuilder()
         return rows;
     }
 
-    async function fetchUserTokens(interaction: ChatInputCommandInteraction, walletId: string): Promise<TokenResponse> {
+    async function fetchUserTokens(interaction: ChatInputCommandInteraction, walletId: string): Promise<TokenInUserToken[]> {
         try {
 
-        
-        const getTokensByOwnerUrl = `https://narrative-server-production.up.railway.app/das/fungible/${walletId}`;
-        const getTokensByOwner = await axios.get<TokenResponse>(getTokensByOwnerUrl);
+        //should be astralane
+        const getTokensByOwnerUrl = `https://graphql.astralane.io/api/v1/portfolio/tokens/spot?wallet=${walletId}`;
+        const getTokensByOwner = await axios.get<UserTokens>(getTokensByOwnerUrl, {
+            headers: {
+                "x-api-key": process.env.ASTRALANE_KEY
+            }
+        });
         
         // Filter out dust amounts
-        const filteredItems = getTokensByOwner.data.items.filter(filterDustAmounts);
+        const filteredItems = getTokensByOwner.data.tokens;
         
-        return {
-            ...getTokensByOwner.data,
-            items: filteredItems
-        };
+        return getTokensByOwner.data.tokens;
 
      } catch(error) {
         console.error('Error in trade command:', error);
@@ -509,20 +432,20 @@ export const data = new SlashCommandBuilder()
     }
     
     // Create the initial embed with token information
-    async function createTokenEmbed(tokens: TokenItem[]): Promise<EmbedBuilder> {
+    async function createTokenEmbed(tokens: TokenInUserToken[]): Promise<EmbedBuilder> {
         const embed = new EmbedBuilder()
             .setColor('#0099ff')
             .setTitle('Your Tokens')
             .setTimestamp();
     
         for (const token of tokens) {
-            const balance = token.token_info?.balance / Math.pow(10, token.token_info?.decimals);
-            const price = await getTokenPrice(token.id);
-            const totalValue = balance * price;
+            const balance = token?.balance;
+            const price = token?.token_price
+            const tokenBalanceInUsd = token?.balance_usd;
     
             embed.addFields({
-                name: token.content.metadata.name,
-                value: `Address: \`${token?.id}\`\nBalance: ${balance?.toLocaleString()} ${token.content.metadata.symbol}\nPrice: $${price} \nTotal Value: $${totalValue}`,
+                name: token?.metadata.name,
+                value: `Address: \`${token?.tokenAddress}\`\nBalance: ${balance?.toLocaleString()} ${token?.metadata.symbol}\nPrice: $${price} \nTotal Value: $${tokenBalanceInUsd}`,
                 inline: false
             });
 
@@ -531,9 +454,9 @@ export const data = new SlashCommandBuilder()
         return embed;
     }
 
-    function filterDustAmounts(tokenInfo: TokenItem): boolean {
-        const balance = tokenInfo.token_info?.balance || 0;
-        const decimals = tokenInfo.token_info?.decimals || 0;
+    function filterDustAmounts(tokenInfo: TokenInUserToken): boolean {
+        const balance = tokenInfo?.balance || 0;
+        const decimals = tokenInfo?.decimals || 0;
         const actualBalance = balance / Math.pow(10, decimals);
         
         // For 6 decimals, filter out anything <= 0.000001

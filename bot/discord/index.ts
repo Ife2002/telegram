@@ -21,7 +21,7 @@ const AppDataSource = new DataSource({
     entities: [User, UserSettings, UserBuddy],
     synchronize: false, // Set this to false to prevent automatic schema updates
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-    logging: true
+    logging: false
 });
 
 const userActiveTokenAddresses = new Map<string, string>();
