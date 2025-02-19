@@ -294,6 +294,7 @@ async function startBot() {
                 }
                 break;
             case 'buy1': 
+                console.log("buy 1")
                 await handleBuyNow(
                     interaction, 
                     userService,
@@ -353,6 +354,7 @@ async function startBot() {
                     }
                     
                     const tokenInfo = await getTokenInfo(content);
+
                     const { publicKey } = await client.userService.getOrCreateUserForDiscord(
                         message.author.id,
                         message
