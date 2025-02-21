@@ -15,6 +15,7 @@ import { DMCollectorService, Validators } from '../../utils/dmCollectors';
 import { AvalancheDiscordClient } from '../../index';
 import { UserService } from '../../../src/user/user.service';
 import { cleanNumber } from "../../../logic/utils/cleanTrailingZero";
+import { createDMResponseWithButtons } from '../../utils/dmButtonHandler';
 
 // Command definition
 const data = new SlashCommandBuilder()
@@ -115,16 +116,33 @@ async function handleCopyAddress(interaction: ButtonInteraction, user: UserType)
 }
 
 async function handleSettings(interaction: ButtonInteraction, user: UserType, userService: UserService) {
-
-    const settingsEmbed = await createSettingsEmbed(user, userService);
-    const settingsButtons = await createSettingsButtons(user, userService);
-    
-
-    await interaction.reply({
-        embeds: [settingsEmbed],
-        components: settingsButtons,
-        ephemeral: true
-    });
+    try {
+        // First check if the interaction has been replied to
+        if (interaction.replied) {
+            // If it has been replied to, use followUp instead
+            await interaction.followUp({
+                embeds: [await createSettingsEmbed(user, userService)],
+                components: await createSettingsButtons(user, userService),
+                ephemeral: true
+            });
+        } else {
+            // If it hasn't been replied to, use reply
+            await interaction.reply({
+                embeds: [await createSettingsEmbed(user, userService)],
+                components: await createSettingsButtons(user, userService),
+                ephemeral: true
+            });
+        }
+    } catch (error) {
+        console.error('Error in handleSettings:', error);
+        // Only try to reply if we haven't already
+        if (!interaction.replied) {
+            await interaction.reply({
+                content: '❌ An error occurred while loading settings.',
+                ephemeral: true
+            });
+        }
+    }
 }
 
 
@@ -143,11 +161,19 @@ async function handleSlippage(interaction: ButtonInteraction, user: UserType, us
 
                 const updatedSettingsEmbed = await createSettingsEmbed(user, userService);
                 
-                // Send confirmation: optimally it should return the setting its on currently with the sucess message
-                await message.reply({
+                await createDMResponseWithButtons({
+                    message,
                     content: `✅ Slippage has been set to ${slippage}%`,
                     embeds: [updatedSettingsEmbed],
-                    components: await createSettingsButtons(user, userService)
+                    components: await createSettingsButtons(user, userService),
+                    user,
+                    userService,
+                    buttonHandlers: {
+                        adjust_slippage: handleSlippage,
+                        adjust_priorityFee: handleDefaultPriorityFee,
+                        adjust_buy_amount: handleBuyAmount,
+                        toggle_nozomi: handleToggleNozomi
+                    }
                 });
             },
             async onError(message, error) {
@@ -182,10 +208,19 @@ async function handleDefaultPriorityFee(interaction: ButtonInteraction, user: Us
                     const updatedSettingsEmbed = await createSettingsEmbed(user, userService);
                     
                     // Send DM confirmation
-                    await message.reply({
+                    await createDMResponseWithButtons({
+                        message,
                         content: `✅ Default Priority fee has been set to ${defaultPriorityFee} SOL`,
                         embeds: [updatedSettingsEmbed],
-                        components: await createSettingsButtons(user, userService)
+                        components: await createSettingsButtons(user, userService),
+                        user,
+                        userService,
+                        buttonHandlers: {
+                            adjust_slippage: handleSlippage,
+                            adjust_priorityFee: handleDefaultPriorityFee,
+                            adjust_buy_amount: handleBuyAmount,
+                            toggle_nozomi: handleToggleNozomi
+                        }
                     });
 
                 } catch (error) {
@@ -206,42 +241,96 @@ async function handleDefaultPriorityFee(interaction: ButtonInteraction, user: Us
     }
 }
 
-async function handleBuyAmount(interaction: ButtonInteraction, user: UserType, userService: UserService) {
+async function handleBuyAmount(
+    interaction: ButtonInteraction, 
+    user: UserType, 
+    userService: UserService
+) {
     try {
-        // Remove the deferUpdate and followUp from here since DMCollectorService handles it
         await DMCollectorService.collectDM(interaction, {
-            prompt: "Please enter your desired Buy amount in SOL (e.g. 0.01)",
-            validator: Validators.priorityFees,
+            prompt: "Please enter your desired Buy amount in SOL (e.g. 0.01). Amount must be greater than 0",
+            validator: (content: string) => { // validator is defined in DM collector
+                const value = parseFloat(content);
+                
+                // Check if the input is actually a number
+                if (isNaN(value)) {
+                    return {
+                        isValid: false,
+                        error: "Please enter a valid number"
+                    };
+                }
+                
+                // Check for negative values
+                if (value < 0) {
+                    return {
+                        isValid: false,
+                        error: "Buy amount cannot be negative"
+                    };
+                }
+                
+                // Check lower bound
+                if (value === 0) {
+                    return {
+                        isValid: false,
+                        error: "Buy amount must be greater than 0"
+                    };
+                }
+                
+                // Check decimal places (prevent too many decimals)
+                const decimals = content.split('.')[1]?.length || 0;
+                if (decimals > 8) {
+                    return {
+                        isValid: false,
+                        error: "Buy amount cannot have more than 8 decimal places"
+                    };
+                }
+                
+                return {
+                    isValid: true,
+                    value: value
+                };
+            },
             async onSuccess(message, value) {
                 console.log('DM collector success:', { value });
                 try {
                     await userService.updateBuyAmount(user.discordId, value);
-                    const defaultPriorityFee = await userService.getBuyAmount(user.discordId);
-
+                    const defaultBuyAmount = await userService.getBuyAmount(user.discordId);
+                    
                     const updatedSettingsEmbed = await createSettingsEmbed(user, userService);
                     
-                    // Send DM confirmation
                     await message.reply({
-                        content: `✅ Default buy amount has been set to ${defaultPriorityFee} SOL`,
+                        content: `✅ Default buy amount has been set to ${cleanNumber(defaultBuyAmount)} SOL`,
                         embeds: [updatedSettingsEmbed],
                         components: await createSettingsButtons(user, userService)
                     });
 
+                    await createDMResponseWithButtons({
+                        message,
+                        content: `✅ Default buy amount has been set to ${defaultBuyAmount} SOL`,
+                        embeds: [updatedSettingsEmbed],
+                        components: await createSettingsButtons(user, userService),
+                        user,
+                        userService,
+                        buttonHandlers: {
+                            adjust_slippage: handleSlippage,
+                            adjust_priorityFee: handleDefaultPriorityFee,
+                            adjust_buy_amount: handleBuyAmount,
+                            toggle_nozomi: handleToggleNozomi
+                        }
+                    });
                 } catch (error) {
-                    console.error('Error in priority fee onSuccess:', error);
-                    await message.reply('❌ An error occurred while saving your priority fee.');
+                    console.error('Error in buy amount onSuccess:', error);
+                    await message.reply('❌ An error occurred while saving your buy amount.');
                 }
             },
             async onError(message, error) {
                 console.error('DM collector error:', error);
-                await message.reply(`❌ ${error}. Please enter a valid value between 0 and 0.5.`);
+                await message.reply(`❌ ${error || 'Please enter a valid value between 0 and 0.5 SOL.'}`);
             },
             timeout: 1000000
         });
-
     } catch (error) {
-        console.error('Error in handleDefaultPriorityFee:', error);
-        // DMCollectorService handles the error responses, so we don't need to handle them here
+        console.error('Error in handleBuyAmount:', error);
     }
 }
 

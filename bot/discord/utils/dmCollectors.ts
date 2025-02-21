@@ -38,6 +38,8 @@ export class DMCollectorService {
         try {
             let interactionResponse: InteractionResponse | Message;
 
+            const dmChannel = await interaction.user.createDM();
+
             // Handle different interaction types
             if (interaction instanceof ButtonInteraction || interaction instanceof SelectMenuInteraction) {
                 interactionResponse = await interaction.deferUpdate();
@@ -45,7 +47,6 @@ export class DMCollectorService {
                 interactionResponse = await interaction.deferReply({ ephemeral: true });
             }
 
-            const dmChannel = await interaction.user.createDM();
             await dmChannel.send(options.prompt);
             
             let attempts = 0;
@@ -80,16 +81,32 @@ export class DMCollectorService {
             
         } catch (error) {
             console.error('Error in collectDM:', error);
-            const errorMessage = { 
-                content: '❌ Error processing your request', 
-                ephemeral: true 
-            };
-
-            if (!interaction.replied) {
-                if (interaction instanceof ButtonInteraction || interaction instanceof SelectMenuInteraction) {
-                    await interaction.followUp(errorMessage);
-                } else {
-                    await interaction.editReply(errorMessage);
+            console.error('Error in collectDM:', error);
+            
+            // Only try to respond to the interaction if it's still valid
+            try {
+                if (!interaction.replied && !interaction.deferred) {
+                    if (interaction instanceof ButtonInteraction || interaction instanceof SelectMenuInteraction) {
+                        await interaction.reply({
+                            content: '❌ Error processing your request',
+                            ephemeral: true
+                        });
+                    } else {
+                        await interaction.reply({
+                            content: '❌ Error processing your request',
+                            ephemeral: true
+                        });
+                    }
+                }
+            } catch (replyError) {
+                console.error('Could not send error response:', replyError);
+                // At this point, the interaction is definitely expired
+                // We've already created the DM channel, so we can send the error there
+                try {
+                    const dmChannel = await interaction.user.createDM();
+                    await dmChannel.send('❌ An error occurred while processing your request. Please try again.');
+                } catch (dmError) {
+                    console.error('Could not send DM error message:', dmError);
                 }
             }
         }
@@ -176,6 +193,17 @@ export const Validators = {
     },
 
     priorityFees: (content: string) => {
+        const solAmount = parseFloat(content);
+        return {
+            isValid: !isNaN(solAmount) && 
+                    solAmount >= 0 && 
+                    solAmount <= 0.4, // Max 0.5 SOL as priority fee
+            value: solAmount,
+            error: 'Please enter a valid priority fee between 0 and 0.5 SOL'
+        };
+    },
+
+    buyAmount: (content: string) => {
         const solAmount = parseFloat(content);
         return {
             isValid: !isNaN(solAmount) && 

@@ -3,10 +3,10 @@ import { deployCommands } from './deploy-commands';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import * as fs from 'fs';
-import { handleBuyNow, pumpService } from './commands/token/buy';
+import { handleBuyNow } from './commands/token/buy';
 import { UserService } from '../src/user/user.service';
 import { getTokenInfo } from '../logic/utils/astralane';
-import { Connection, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
 import { createLookupComponent, handleRefresh } from './components/lookUp';
 import { TokenMarketData } from '../logic/utils/types';
 import { DataSource } from 'typeorm';
@@ -213,7 +213,7 @@ async function startBot() {
                                 user,
                                 buyPriceFromConfig
                             );
-                            console.log(`buying ${tokenInfo?.tokenAddress} for ${interaction.user.username} now`)
+                            console.log(`buying ${tokenInfo?.tokenAddress} for ${interaction.user.username} now`);
                             break;
                         case 'setBuyPrice':
                             try {
@@ -294,38 +294,37 @@ async function startBot() {
                     }
                 }
                 break;
-            case 'buy1': 
-                console.log("buy 1")
-                await handleBuyNow(
-                    interaction, 
-                    userService,
-                    tokenInfo,
-                    user,
-                    1
-                );
-                console.log(`buying ${tokenInfo?.tokenAddress} for ${interaction.user.username} now`)
-            break;
-            case 'buy10': 
-                await handleBuyNow(
-                    interaction, 
-                    userService,
-                    tokenInfo,
-                    user,
-                    0.1
-                );
-                console.log(`buying ${tokenInfo.tokenAddress} for ${interaction.user.username} now`)
-            break;
+                        case 'buy1': 
+                            await handleBuyNow(
+                                interaction, 
+                                userService,
+                                tokenInfo,
+                                user,
+                                1
+                            );
+                            console.log(`buying ${tokenInfo?.tokenAddress} for ${interaction.user.username} now`)
+                        break;
+                        case 'buy10': 
+                            await handleBuyNow(
+                                interaction, 
+                                userService,
+                                tokenInfo,
+                                user,
+                                0.1
+                            );
+                            console.log(`buying ${tokenInfo.tokenAddress} for ${interaction.user.username} now`)
+                        break;
 
-            case 'refresh': 
-                 
-                await handleRefresh(
-                    interaction, 
-                    address,
-                    tokenInfo,
-                    userService
-                );
-                console.log(`Refreshing ${tokenInfo.tokenAddress} for ${interaction.user.username} now`)
-            break;
+                        case 'refresh': 
+                            
+                            await handleRefresh(
+                                interaction, 
+                                address,
+                                tokenInfo,
+                                userService
+                            );
+                            console.log(`Refreshing ${tokenInfo.tokenAddress} for ${interaction.user.username} now`)
+                        break;
 
             }
     } catch (error) {
